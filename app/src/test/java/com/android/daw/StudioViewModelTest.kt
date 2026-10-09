@@ -33,7 +33,11 @@ class StudioViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        viewModel = StudioViewModel()
+        viewModel = StudioViewModel(
+            defaultDispatcher = testDispatcher,
+            ioDispatcher = testDispatcher,
+            enableTelemetryLoop = false
+        )
     }
 
     @After

@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.daw.bridge.NativeAudioEngine
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -31,7 +32,11 @@ import kotlin.math.sin
  * - High-Frequency Telemetry: Playhead frame counter and ballistic level meters isolated
  *   in dedicated StateFlows for Draw-phase consumption.
  */
-class StudioViewModel : ViewModel() {
+class StudioViewModel(
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    enableTelemetryLoop: Boolean = true
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(createInitialStudioState())
     val uiState: StateFlow<StudioUiState> = _uiState.asStateFlow()
@@ -51,7 +56,9 @@ class StudioViewModel : ViewModel() {
     private val meterBallisticsMap = mutableMapOf<Int, BallisticsState>()
 
     init {
-        startTelemetryLoop()
+        if (enableTelemetryLoop) {
+            startTelemetryLoop()
+        }
     }
 
     /**
@@ -134,17 +141,17 @@ class StudioViewModel : ViewModel() {
     // Transport Control Logic (Offloaded to background coroutines - Rule 8)
     // =========================================================================
 
-    private suspend fun handlePlay() = withContext(Dispatchers.Default) {
+    private suspend fun handlePlay() = withContext(defaultDispatcher) {
         withNativeEngine { it.play() }
         _uiState.update { it.copy(transportState = TransportState.PLAYING) }
     }
 
-    private suspend fun handlePause() = withContext(Dispatchers.Default) {
+    private suspend fun handlePause() = withContext(defaultDispatcher) {
         withNativeEngine { it.pause() }
         _uiState.update { it.copy(transportState = TransportState.PAUSED) }
     }
 
-    private suspend fun handleStop() = withContext(Dispatchers.Default) {
+    private suspend fun handleStop() = withContext(defaultDispatcher) {
         withNativeEngine { it.stopTransport() }
         _playheadFrame.value = 0L
         _uiState.update {
@@ -155,7 +162,7 @@ class StudioViewModel : ViewModel() {
         }
     }
 
-    private suspend fun handleRewind() = withContext(Dispatchers.Default) {
+    private suspend fun handleRewind() = withContext(defaultDispatcher) {
         val loopStart = _uiState.value.loopStartFrame
         val targetFrame = if (_uiState.value.isLooping) loopStart else 0L
         withNativeEngine { it.seek(targetFrame) }
@@ -163,27 +170,27 @@ class StudioViewModel : ViewModel() {
         _uiState.update { it.copy(currentFrame = targetFrame) }
     }
 
-    private suspend fun handleSeek(frame: Long) = withContext(Dispatchers.Default) {
+    private suspend fun handleSeek(frame: Long) = withContext(defaultDispatcher) {
         val clampedFrame = frame.coerceIn(0L, _uiState.value.totalFrames)
         withNativeEngine { it.seek(clampedFrame) }
         _playheadFrame.value = clampedFrame
         _uiState.update { it.copy(currentFrame = clampedFrame) }
     }
 
-    private suspend fun handleSetTempo(bpm: Double) = withContext(Dispatchers.Default) {
+    private suspend fun handleSetTempo(bpm: Double) = withContext(defaultDispatcher) {
         val clampedBpm = bpm.coerceIn(40.0, 300.0)
         withNativeEngine { it.setTempo(clampedBpm) }
         _uiState.update { it.copy(bpm = clampedBpm) }
     }
 
-    private suspend fun handleToggleLoop() = withContext(Dispatchers.Default) {
+    private suspend fun handleToggleLoop() = withContext(defaultDispatcher) {
         val current = _uiState.value
         val newLooping = !current.isLooping
         withNativeEngine { it.setLoop(newLooping, current.loopStartFrame, current.loopEndFrame) }
         _uiState.update { it.copy(isLooping = newLooping) }
     }
 
-    private suspend fun handleSetLoopRange(startFrame: Long, endFrame: Long) = withContext(Dispatchers.Default) {
+    private suspend fun handleSetLoopRange(startFrame: Long, endFrame: Long) = withContext(defaultDispatcher) {
         val start = startFrame.coerceAtLeast(0L)
         val end = maxOf(start + 44100L, endFrame)
         withNativeEngine { it.setLoop(_uiState.value.isLooping, start, end) }
@@ -194,7 +201,7 @@ class StudioViewModel : ViewModel() {
     // Track Management Logic
     // =========================================================================
 
-    private suspend fun handleAddTrack(name: String) = withContext(Dispatchers.Default) {
+    private suspend fun handleAddTrack(name: String) = withContext(defaultDispatcher) {
         val currentTracks = _uiState.value.tracks
         val nextId = (currentTracks.maxOfOrNull { it.trackId } ?: 0) + 1
         val colorHex = TRACK_PALETTE_HEX[nextId % TRACK_PALETTE_HEX.size]
@@ -228,7 +235,7 @@ class StudioViewModel : ViewModel() {
         }
     }
 
-    private suspend fun handleRemoveTrack(trackId: Int) = withContext(Dispatchers.Default) {
+    private suspend fun handleRemoveTrack(trackId: Int) = withContext(defaultDispatcher) {
         withNativeEngine { it.removeTrack(trackId) }
         _uiState.update { state ->
             val updatedTracks = state.tracks.filterNot { it.trackId == trackId }
@@ -245,7 +252,7 @@ class StudioViewModel : ViewModel() {
         }
     }
 
-    private suspend fun handleSetTrackVolume(trackId: Int, volumeLinear: Float) = withContext(Dispatchers.Default) {
+    private suspend fun handleSetTrackVolume(trackId: Int, volumeLinear: Float) = withContext(defaultDispatcher) {
         val clamped = volumeLinear.coerceIn(0.0f, 2.0f)
         withNativeEngine { it.setTrackVolume(trackId, clamped) }
         _uiState.update { state ->
@@ -257,7 +264,7 @@ class StudioViewModel : ViewModel() {
         }
     }
 
-    private suspend fun handleSetTrackPan(trackId: Int, pan: Float) = withContext(Dispatchers.Default) {
+    private suspend fun handleSetTrackPan(trackId: Int, pan: Float) = withContext(defaultDispatcher) {
         val clamped = pan.coerceIn(-1.0f, 1.0f)
         withNativeEngine { it.setTrackPan(trackId, clamped) }
         _uiState.update { state ->
@@ -269,7 +276,7 @@ class StudioViewModel : ViewModel() {
         }
     }
 
-    private suspend fun handleToggleMute(trackId: Int) = withContext(Dispatchers.Default) {
+    private suspend fun handleToggleMute(trackId: Int) = withContext(defaultDispatcher) {
         _uiState.update { state ->
             state.copy(
                 tracks = state.tracks.map {
@@ -283,7 +290,7 @@ class StudioViewModel : ViewModel() {
         }
     }
 
-    private suspend fun handleToggleSolo(trackId: Int) = withContext(Dispatchers.Default) {
+    private suspend fun handleToggleSolo(trackId: Int) = withContext(defaultDispatcher) {
         _uiState.update { state ->
             state.copy(
                 tracks = state.tracks.map {
@@ -297,7 +304,7 @@ class StudioViewModel : ViewModel() {
         }
     }
 
-    private suspend fun handleToggleArm(trackId: Int) = withContext(Dispatchers.Default) {
+    private suspend fun handleToggleArm(trackId: Int) = withContext(defaultDispatcher) {
         _uiState.update { state ->
             state.copy(
                 tracks = state.tracks.map {
@@ -319,12 +326,12 @@ class StudioViewModel : ViewModel() {
     // Master Bus & Viewport Logic
     // =========================================================================
 
-    private suspend fun handleSetMasterVolume(volumeLinear: Float) = withContext(Dispatchers.Default) {
+    private suspend fun handleSetMasterVolume(volumeLinear: Float) = withContext(defaultDispatcher) {
         val clamped = volumeLinear.coerceIn(0.0f, 2.0f)
         _uiState.update { it.copy(masterVolumeLinear = clamped) }
     }
 
-    private suspend fun handleSetMasterPan(pan: Float) = withContext(Dispatchers.Default) {
+    private suspend fun handleSetMasterPan(pan: Float) = withContext(defaultDispatcher) {
         val clamped = pan.coerceIn(-1.0f, 1.0f)
         _uiState.update { it.copy(masterPan = clamped) }
     }
@@ -507,7 +514,7 @@ class StudioViewModel : ViewModel() {
         freqHz: Float,
         gainDb: Float,
         q: Float
-    ) = withContext(Dispatchers.Default) {
+    ) = withContext(defaultDispatcher) {
         withNativeEngine {
             it.setTrackEq(trackId, bandIndex, 1 /* PEAKING */, freqHz, q, gainDb)
         }
@@ -553,7 +560,7 @@ class StudioViewModel : ViewModel() {
         timeMs: Float,
         feedback: Float,
         wetDry: Float
-    ) = withContext(Dispatchers.Default) {
+    ) = withContext(defaultDispatcher) {
         withNativeEngine {
             it.setTrackDelay(trackId, timeMs, feedback, wetDry)
         }
@@ -602,7 +609,7 @@ class StudioViewModel : ViewModel() {
         thresholdDb: Float,
         ceilingDb: Float,
         releaseMs: Float
-    ) = withContext(Dispatchers.Default) {
+    ) = withContext(defaultDispatcher) {
         withNativeEngine {
             it.setMasterLimiter(thresholdDb, ceilingDb, releaseMs)
         }
@@ -627,7 +634,7 @@ class StudioViewModel : ViewModel() {
     // Recording, Import & Export
     // =========================================================================
 
-    private suspend fun handleToggleRecord(isRecording: Boolean) = withContext(Dispatchers.Default) {
+    private suspend fun handleToggleRecord(isRecording: Boolean) = withContext(defaultDispatcher) {
         if (isRecording) {
             val armedTracks = _uiState.value.tracks.filter { it.isArmed }
             if (armedTracks.isEmpty()) {
@@ -652,7 +659,7 @@ class StudioViewModel : ViewModel() {
         }
     }
 
-    private suspend fun handleImportAudio(trackId: Int, uri: Uri) = withContext(Dispatchers.IO) {
+    private suspend fun handleImportAudio(trackId: Int, uri: Uri) = withContext(ioDispatcher) {
         _uiState.update { it.copy(statusMessage = "Importing audio from $uri...") }
         delay(300)
 
@@ -683,11 +690,11 @@ class StudioViewModel : ViewModel() {
         }
     }
 
-    private suspend fun handleStartExport(bitDepth: Int) = withContext(Dispatchers.IO) {
+    private suspend fun handleStartExport(bitDepth: Int) = withContext(ioDispatcher) {
         exportJob?.cancel()
         _uiState.update { it.copy(isExporting = true, exportProgressPercent = 0, statusMessage = "Rendering $bitDepth-bit WAV mixdown...") }
 
-        exportJob = viewModelScope.launch(Dispatchers.IO) {
+        exportJob = viewModelScope.launch(ioDispatcher) {
             try {
                 for (p in 1..100) {
                     delay(20)
@@ -721,7 +728,7 @@ class StudioViewModel : ViewModel() {
 
     private fun startTelemetryLoop() {
         telemetryJob?.cancel()
-        telemetryJob = viewModelScope.launch(Dispatchers.Default) {
+        telemetryJob = viewModelScope.launch(defaultDispatcher) {
             var lastTimestamp = System.currentTimeMillis()
             val framesPerTick = 735L // ~44100 / 60fps = 735 frames per tick
 
