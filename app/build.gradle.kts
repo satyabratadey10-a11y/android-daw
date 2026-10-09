@@ -54,7 +54,6 @@ android {
         debug {
             isMinifyEnabled = false
             isDebuggable = true
-            jniDebuggable = true
         }
     }
 
