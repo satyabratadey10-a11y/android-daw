@@ -125,30 +125,38 @@ fun DawMeter(
         }
     }
 
+    val colors = Daw.colors
+    val space = Daw.space
+    val radii = Daw.radii
+
+    val coralBase = colors.coral.base
+    val n3Raised = colors.n3Raised
+    val hairlineDp = space.hairline
+
     Row(
         modifier = modifier
-            .sizeIn(minWidth = Daw.space.touchTargetMin, minHeight = Daw.space.touchTargetMin)
-            .padding(vertical = Daw.space.xs),
+            .sizeIn(minWidth = space.touchTargetMin, minHeight = space.touchTargetMin)
+            .padding(vertical = space.xs),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Daw.space.xs)
+        horizontalArrangement = Arrangement.spacedBy(space.xs)
     ) {
         Column(
             modifier = Modifier.fillMaxHeight(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Daw.space.xs)
+            verticalArrangement = Arrangement.spacedBy(space.xs)
         ) {
             // Latching Clipping LED indicator (Min 48dp hit area wrapper)
             Box(
                 modifier = Modifier
-                    .size(Daw.space.iconMin)
-                    .clip(Daw.radii.full)
+                    .size(space.iconMin)
+                    .clip(radii.full)
                     .clickable(onClick = onResetClip),
                 contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.size(Daw.space.sm)) {
+                Canvas(modifier = Modifier.size(space.sm)) {
                     val level = levelProvider()
                     val isClipped = level.hasClipped
-                    val clipColor = if (isClipped) Daw.colors.coral.base else Daw.colors.n3Raised
+                    val clipColor = if (isClipped) coralBase else n3Raised
                     drawCircle(color = clipColor)
                 }
             }
@@ -158,13 +166,13 @@ fun DawMeter(
                 modifier = Modifier
                     .weight(1f)
                     .width(width)
-                    .clip(Daw.radii.xs)
-                    .background(Daw.colors.n0Workspace)
+                    .clip(radii.xs)
+                    .background(colors.n0Workspace)
             ) {
-                val gutterColor = Daw.colors.n1Grid
-                val coralWarning = Daw.colors.coral.base
+                val gutterColor = colors.n1Grid
+                val coralWarning = coralBase
                 val normalColor = activeColor
-                val peakTickColor = Daw.colors.inkOnDark
+                val peakTickColor = colors.inkOnDark
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     // Drive frame ballistics
@@ -174,7 +182,7 @@ fun DawMeter(
 
                     val canvasWidth = size.width
                     val canvasHeight = size.height
-                    val hairlinePx = Daw.space.hairline.toPx()
+                    val hairlinePx = hairlineDp.toPx()
                     val channelWidth = (canvasWidth - hairlinePx) / 2f
 
                     // Draw Left Channel

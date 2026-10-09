@@ -54,13 +54,30 @@ fun EqCurveVisualizer(
     var activeDraggingBandIndex by remember { mutableStateOf<Int?>(null) }
     val textMeasurer = rememberTextMeasurer()
 
+    val colors = Daw.colors
+    val space = Daw.space
+    val radii = Daw.radii
+
+    val touchTargetMinDp = space.touchTargetMin
+    val hairlineDp = space.hairline
+    val strokeDp = space.stroke
+    val indicatorDp = space.indicator
+    val xsDp = space.xs
+
+    val n0Workspace = colors.n0Workspace
+    val n3Raised = colors.n3Raised
+    val mintBase = colors.mint.base
+    val mintFaint = colors.mint.faint
+    val inkMuted = colors.inkMuted
+    val inkOnDark = colors.inkOnDark
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(220.dp)
-            .clip(Daw.radii.sm)
-            .background(Daw.colors.n2Surface)
-            .padding(Daw.space.xs)
+            .clip(radii.sm)
+            .background(colors.n2Surface)
+            .padding(space.xs)
     ) {
         Canvas(
             modifier = Modifier
@@ -71,7 +88,7 @@ fun EqCurveVisualizer(
                             val width = size.width.toFloat()
                             val height = size.height.toFloat()
 
-                            val touchRadiusPx = Daw.space.touchTargetMin.toPx()
+                            val touchRadiusPx = touchTargetMinDp.toPx()
                             val closestBand = bands.minByOrNull { band ->
                                 val nodeX = freqToX(band.frequencyHz, width)
                                 val nodeY = dbToY(band.gainDb, height)
@@ -116,16 +133,16 @@ fun EqCurveVisualizer(
             freqGuides.forEach { (freq, label) ->
                 val x = freqToX(freq, width)
                 drawLine(
-                    color = Daw.colors.n3Raised,
+                    color = n3Raised,
                     start = Offset(x, 0f),
                     end = Offset(x, height),
-                    strokeWidth = Daw.space.hairline.toPx()
+                    strokeWidth = hairlineDp.toPx()
                 )
                 drawText(
                     textMeasurer = textMeasurer,
                     text = label,
-                    topLeft = Offset(x + Daw.space.xs.toPx(), height - 16.dp.toPx()),
-                    style = TextStyle(color = Daw.colors.inkMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    topLeft = Offset(x + xsDp.toPx(), height - 16.dp.toPx()),
+                    style = TextStyle(color = inkMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                 )
             }
 
@@ -133,16 +150,16 @@ fun EqCurveVisualizer(
             dbGuides.forEach { (db, label) ->
                 val y = dbToY(db, height)
                 drawLine(
-                    color = if (db == 0f) Daw.colors.mint.faint else Daw.colors.n3Raised,
+                    color = if (db == 0f) mintFaint else n3Raised,
                     start = Offset(0f, y),
                     end = Offset(width, y),
-                    strokeWidth = if (db == 0f) Daw.space.stroke.toPx() else Daw.space.hairline.toPx()
+                    strokeWidth = if (db == 0f) strokeDp.toPx() else hairlineDp.toPx()
                 )
                 drawText(
                     textMeasurer = textMeasurer,
                     text = label,
-                    topLeft = Offset(Daw.space.xs.toPx(), y - 12.dp.toPx()),
-                    style = TextStyle(color = Daw.colors.inkMuted, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                    topLeft = Offset(xsDp.toPx(), y - 12.dp.toPx()),
+                    style = TextStyle(color = inkMuted, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                 )
             }
 
@@ -183,8 +200,8 @@ fun EqCurveVisualizer(
             // 3. Render Filled Spectral Gradient + Outline Curve
             val fillBrush = Brush.verticalGradient(
                 colors = listOf(
-                    Daw.colors.mint.base.copy(alpha = 0.35f),
-                    Daw.colors.mint.base.copy(alpha = 0.05f)
+                    mintBase.copy(alpha = 0.35f),
+                    mintBase.copy(alpha = 0.05f)
                 ),
                 startY = 0f,
                 endY = height
@@ -194,8 +211,8 @@ fun EqCurveVisualizer(
 
             drawPath(
                 path = curvePath,
-                color = Daw.colors.mint.base,
-                style = Stroke(width = Daw.space.indicator.toPx())
+                color = mintBase,
+                style = Stroke(width = indicatorDp.toPx())
             )
 
             // 4. Interactive Drag Nodes for each EQ band
@@ -203,11 +220,11 @@ fun EqCurveVisualizer(
                 val nodeX = freqToX(band.frequencyHz, width)
                 val nodeY = dbToY(band.gainDb, height)
                 val isSelected = (activeDraggingBandIndex == band.bandIndex)
-                val nodeColor = Daw.colors.trackColor(band.bandIndex)
+                val nodeColor = colors.trackColor(band.bandIndex)
 
                 // Outer halo
                 drawCircle(
-                    color = Daw.colors.n0Workspace.copy(alpha = 0.8f),
+                    color = n0Workspace.copy(alpha = 0.8f),
                     radius = if (isSelected) 14.dp.toPx() else 10.dp.toPx(),
                     center = Offset(nodeX, nodeY)
                 )
@@ -219,8 +236,8 @@ fun EqCurveVisualizer(
                 )
                 // Center pin
                 drawCircle(
-                    color = Daw.colors.inkOnDark,
-                    radius = Daw.space.indicator.toPx(),
+                    color = inkOnDark,
+                    radius = indicatorDp.toPx(),
                     center = Offset(nodeX, nodeY)
                 )
 
@@ -229,7 +246,7 @@ fun EqCurveVisualizer(
                     textMeasurer = textMeasurer,
                     text = "${band.bandIndex + 1}",
                     topLeft = Offset(nodeX - 3.dp.toPx(), nodeY - 18.dp.toPx()),
-                    style = TextStyle(color = Daw.colors.inkOnDark, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    style = TextStyle(color = inkOnDark, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                 )
             }
         }

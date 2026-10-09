@@ -72,6 +72,8 @@ fun RingKnob(
     isEnabled: Boolean = true
 ) {
     var isDragging by remember { mutableFloatStateOf(0f) }
+    val strokeWidthDp = Daw.space.indicator
+    val inkOnDark = Daw.colors.inkOnDark
 
     val animatedValue by animateFloatAsState(
         targetValue = value,
@@ -114,7 +116,7 @@ fun RingKnob(
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.size(size)) {
-                val strokeWidth = Daw.space.indicator.toPx()
+                val strokeWidth = strokeWidthDp.toPx()
                 val radius = (size.toPx() - strokeWidth) / 2f
                 val centerOffset = Offset(size.toPx() / 2f, size.toPx() / 2f)
                 val arcTopLeft = Offset(strokeWidth / 2f, strokeWidth / 2f)
@@ -174,7 +176,7 @@ fun RingKnob(
                 val dotY = centerOffset.y + (radius * sin(angleRad)).toFloat()
 
                 drawCircle(
-                    color = Daw.colors.inkOnDark,
+                    color = inkOnDark,
                     radius = strokeWidth * 1.1f,
                     center = Offset(dotX, dotY)
                 )

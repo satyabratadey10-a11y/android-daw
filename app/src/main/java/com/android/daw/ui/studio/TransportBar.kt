@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
@@ -249,11 +250,12 @@ fun TransportBar(
                 ) {
                     val cpuPct = state.cpuUsagePercent
                     val cpuColor = if (cpuPct > 85f) Daw.colors.coral.base else Daw.colors.mint.base
+                    val gutterColor = Daw.colors.n0Workspace
 
                     Canvas(modifier = Modifier.size(width = 48.dp, height = 4.dp)) {
                         // Track gutter
                         drawRoundRect(
-                            color = Daw.colors.n0Workspace,
+                            color = gutterColor,
                             size = size,
                             cornerRadius = CornerRadius(2f, 2f)
                         )

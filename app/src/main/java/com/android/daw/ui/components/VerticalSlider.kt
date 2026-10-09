@@ -46,18 +46,25 @@ fun VerticalSlider(
     thumbColor: Color = Daw.colors.n4Control,
     isEnabled: Boolean = true
 ) {
+    val colors = Daw.colors
+    val space = Daw.space
+    val iconMinDp = space.iconMin
+    val faderTrackWidthDp = space.faderTrackWidth
+    val n0Workspace = colors.n0Workspace
+    val inkOnLight = colors.inkOnLight
+
     Column(
-        modifier = modifier.defaultMinSize(minWidth = Daw.space.touchTargetMin, minHeight = Daw.space.touchTargetMin),
+        modifier = modifier.defaultMinSize(minWidth = space.touchTargetMin, minHeight = space.touchTargetMin),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(width = Daw.space.touchTargetMin, height = height)
+                .size(width = space.touchTargetMin, height = height)
                 .graphicsLayer { alpha = if (isEnabled) 1f else 0.38f }
                 .pointerInput(isEnabled) {
                     if (!isEnabled) return@pointerInput
                     detectTapGestures { offset ->
-                        val thumbRadiusPx = Daw.space.iconMin.toPx() / 2f
+                        val thumbRadiusPx = iconMinDp.toPx() / 2f
                         val trackHeightPx = size.height - 2 * thumbRadiusPx
                         if (trackHeightPx > 0f) {
                             val travelY = offset.y - thumbRadiusPx
@@ -70,7 +77,7 @@ fun VerticalSlider(
                     if (!isEnabled) return@pointerInput
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        val thumbRadiusPx = Daw.space.iconMin.toPx() / 2f
+                        val thumbRadiusPx = iconMinDp.toPx() / 2f
                         val trackHeightPx = size.height - 2 * thumbRadiusPx
                         if (trackHeightPx > 0f) {
                             val delta = -dragAmount.y / trackHeightPx
@@ -84,8 +91,8 @@ fun VerticalSlider(
             Canvas(modifier = Modifier.matchParentSize()) {
                 val canvasWidth = size.width
                 val canvasHeight = size.height
-                val trackWidthPx = Daw.space.faderTrackWidth.toPx()
-                val thumbRadiusPx = Daw.space.iconMin.toPx() / 2f
+                val trackWidthPx = faderTrackWidthDp.toPx()
+                val thumbRadiusPx = iconMinDp.toPx() / 2f
                 val trackHeightPx = canvasHeight - (thumbRadiusPx * 2f)
 
                 val trackLeft = (canvasWidth - trackWidthPx) / 2f
@@ -117,7 +124,7 @@ fun VerticalSlider(
 
                 // Thumb shadow
                 drawCircle(
-                    color = Daw.colors.n0Workspace.copy(alpha = 0.5f),
+                    color = n0Workspace.copy(alpha = 0.5f),
                     radius = thumbRadiusPx,
                     center = Offset(thumbCenterX, thumbCenterY + 2f)
                 )
@@ -129,7 +136,7 @@ fun VerticalSlider(
                 )
                 // Thumb inner center dot
                 drawCircle(
-                    color = Daw.colors.inkOnLight,
+                    color = inkOnLight,
                     radius = 3f,
                     center = Offset(thumbCenterX, thumbCenterY)
                 )

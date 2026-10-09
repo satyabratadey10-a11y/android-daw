@@ -43,6 +43,7 @@ fun WaveformCanvas(
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
+    val inkOnDark = Daw.colors.inkOnDark
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val pyramid = clip.waveformPeakData ?: return@Canvas
@@ -95,7 +96,7 @@ fun WaveformCanvas(
             text = titleText,
             topLeft = Offset(max(clipStartPx + 8.dp.toPx(), 8.dp.toPx()), containerPaddingY + 4.dp.toPx()),
             style = TextStyle(
-                color = Daw.colors.inkOnDark,
+                color = inkOnDark,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Default,
                 fontWeight = FontWeight.SemiBold

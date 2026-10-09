@@ -253,6 +253,8 @@ fun TimelineView(
                 }
 
                 // 3. PLAYHEAD OVERLAY (Layer.Playhead = 2f)
+                val mintColor = Daw.colors.mint.base
+                val playheadStrokeDp = Daw.space.stroke
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -266,7 +268,7 @@ fun TimelineView(
                         val playheadX = (timeSec * zoom) - scrollOffset
 
                         if (playheadX in 0f..size.width) {
-                            val mintColor = Daw.colors.mint.base
+                            val strokeWidthPx = playheadStrokeDp.toPx()
 
                             // Playhead comet fading trail (24dp Mint fading strip proportional to playback)
                             if (state.isPlaying) {
@@ -289,13 +291,13 @@ fun TimelineView(
                                 color = mintColor,
                                 start = Offset(playheadX, 0f),
                                 end = Offset(playheadX, size.height),
-                                strokeWidth = Daw.space.stroke.toPx()
+                                strokeWidth = strokeWidthPx
                             )
 
                             // 12dp Mint cap in the ruler
                             drawCircle(
                                 color = mintColor,
-                                radius = Daw.space.stroke.toPx() * 2f,
+                                radius = strokeWidthPx * 2f,
                                 center = Offset(playheadX, 6f)
                             )
                         }

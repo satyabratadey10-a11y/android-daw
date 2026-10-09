@@ -119,9 +119,10 @@ fun BpmDial(
                 ) {
                     val ringColor = Daw.colors.mint.base
                     val trackColor = Daw.colors.n3Raised
+                    val indicatorDp = Daw.space.indicator
 
                     Canvas(modifier = Modifier.size(Daw.space.dial)) {
-                        val strokeWidth = Daw.space.indicator.toPx()
+                        val strokeWidth = indicatorDp.toPx()
                         val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
                         val arcTopLeft = Offset(strokeWidth / 2f, strokeWidth / 2f)
 

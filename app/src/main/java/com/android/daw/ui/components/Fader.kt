@@ -44,11 +44,29 @@ fun Fader(
     height: Dp = Daw.space.dial
 ) {
     val faderTravelNormalized = linearToTravel(volumeLinear)
+    val colors = Daw.colors
+    val space = Daw.space
+    val radii = Daw.radii
+
+    val thumbHeightDp = space.faderThumbHeight
+    val thumbWidthDp = space.faderThumbWidth
+    val trackWidthDp = space.faderTrackWidth
+    val hairlineDp = space.hairline
+    val strokeDp = space.stroke
+    val smDp = space.sm
+    val xsDp = space.xs
+    val radiusXsDp = radii.xsDp
+    val n0Workspace = colors.n0Workspace
+    val n1Grid = colors.n1Grid
+    val n3Raised = colors.n3Raised
+    val n4Control = colors.n4Control
+    val mintColor = colors.mint.base
+    val inkOnLight = colors.inkOnLight
 
     Column(
         modifier = modifier
-            .sizeIn(minWidth = Daw.space.touchTargetMin, minHeight = Daw.space.touchTargetMin)
-            .padding(horizontal = Daw.space.xs),
+            .sizeIn(minWidth = space.touchTargetMin, minHeight = space.touchTargetMin)
+            .padding(horizontal = space.xs),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Numeric dB readout header
@@ -56,15 +74,15 @@ fun Fader(
         Text(
             text = dbValue,
             style = Daw.type.caption,
-            color = if (volumeLinear > 1.0f) Daw.colors.coral.base else Daw.colors.inkOnDark
+            color = if (volumeLinear > 1.0f) colors.coral.base else colors.inkOnDark
         )
 
-        Spacer(modifier = Modifier.height(Daw.space.xs))
+        Spacer(modifier = Modifier.height(space.xs))
 
         // Fader Track & Thumb Canvas
         Box(
             modifier = Modifier
-                .width(Daw.space.faderThumbWidth)
+                .width(space.faderThumbWidth)
                 .height(height)
                 .pointerInput(Unit) {
                     detectTapGestures(
@@ -77,7 +95,7 @@ fun Fader(
                 .pointerInput(height) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        val thumbHeightPx = Daw.space.faderThumbHeight.toPx()
+                        val thumbHeightPx = thumbHeightDp.toPx()
                         val trackHeightPx = size.height - thumbHeightPx
                         if (trackHeightPx > 0f) {
                             val deltaTravel = -dragAmount.y / trackHeightPx
@@ -93,9 +111,9 @@ fun Fader(
                 val canvasWidth = size.width
                 val canvasHeight = size.height
 
-                val thumbHeightPx = Daw.space.faderThumbHeight.toPx()
-                val thumbWidthPx = Daw.space.faderThumbWidth.toPx()
-                val trackWidthPx = Daw.space.faderTrackWidth.toPx()
+                val thumbHeightPx = thumbHeightDp.toPx()
+                val thumbWidthPx = thumbWidthDp.toPx()
+                val trackWidthPx = trackWidthDp.toPx()
                 val trackHeightPx = canvasHeight - thumbHeightPx
 
                 val trackLeft = (canvasWidth - trackWidthPx) / 2f
@@ -103,7 +121,7 @@ fun Fader(
 
                 // 1. Draw Fader Track Channel (N1 Grid background)
                 drawRoundRect(
-                    color = Daw.colors.n1Grid,
+                    color = n1Grid,
                     topLeft = Offset(trackLeft, trackTop),
                     size = Size(trackWidthPx, trackHeightPx),
                     cornerRadius = CornerRadius(trackWidthPx / 2f, trackWidthPx / 2f)
@@ -111,37 +129,37 @@ fun Fader(
 
                 // Track center slot hairline
                 drawLine(
-                    color = Daw.colors.n3Raised,
+                    color = n3Raised,
                     start = Offset(canvasWidth / 2f, trackTop),
                     end = Offset(canvasWidth / 2f, trackTop + trackHeightPx),
-                    strokeWidth = Daw.space.hairline.toPx()
+                    strokeWidth = hairlineDp.toPx()
                 )
 
                 // 2. Draw Scale Markings
                 // 0 dB unity gain line at 75% height from bottom
                 val unityGainY = trackTop + trackHeightPx * (1f - 0.75f)
-                val tickLength = Daw.space.sm.toPx()
+                val tickLength = smDp.toPx()
                 drawLine(
-                    color = Daw.colors.mint.base,
+                    color = mintColor,
                     start = Offset(trackLeft - tickLength, unityGainY),
                     end = Offset(trackLeft - 2f, unityGainY),
-                    strokeWidth = Daw.space.stroke.toPx()
+                    strokeWidth = strokeDp.toPx()
                 )
                 drawLine(
-                    color = Daw.colors.mint.base,
+                    color = mintColor,
                     start = Offset(trackLeft + trackWidthPx + 2f, unityGainY),
                     end = Offset(trackLeft + trackWidthPx + tickLength, unityGainY),
-                    strokeWidth = Daw.space.stroke.toPx()
+                    strokeWidth = strokeDp.toPx()
                 )
 
                 // 3. Draw Fader Thumb Cap (48x24dp radius xs)
                 val thumbY = trackTop + trackHeightPx * (1f - faderTravelNormalized) - (thumbHeightPx / 2f)
                 val thumbX = (canvasWidth - thumbWidthPx) / 2f
-                val cornerRadius = CornerRadius(Daw.radii.xsDp.toPx(), Daw.radii.xsDp.toPx())
+                val cornerRadius = CornerRadius(radiusXsDp.toPx(), radiusXsDp.toPx())
 
                 // Thumb shadow
                 drawRoundRect(
-                    color = Daw.colors.n0Workspace.copy(alpha = 0.5f),
+                    color = n0Workspace.copy(alpha = 0.5f),
                     topLeft = Offset(thumbX, thumbY + 3f),
                     size = Size(thumbWidthPx, thumbHeightPx),
                     cornerRadius = cornerRadius
@@ -149,7 +167,7 @@ fun Fader(
 
                 // Thumb body (N4 Control surface)
                 drawRoundRect(
-                    color = Daw.colors.n4Control,
+                    color = n4Control,
                     topLeft = Offset(thumbX, thumbY),
                     size = Size(thumbWidthPx, thumbHeightPx),
                     cornerRadius = cornerRadius
@@ -159,10 +177,10 @@ fun Fader(
                 val indicatorY = thumbY + thumbHeightPx / 2f
                 val isAtUnity = kotlin.math.abs(faderTravelNormalized - 0.75f) < 0.02f
                 drawLine(
-                    color = if (isAtUnity) Daw.colors.mint.base else Daw.colors.inkOnLight,
-                    start = Offset(thumbX + Daw.space.xs.toPx(), indicatorY),
-                    end = Offset(thumbX + thumbWidthPx - Daw.space.xs.toPx(), indicatorY),
-                    strokeWidth = Daw.space.stroke.toPx()
+                    color = if (isAtUnity) mintColor else inkOnLight,
+                    start = Offset(thumbX + xsDp.toPx(), indicatorY),
+                    end = Offset(thumbX + thumbWidthPx - xsDp.toPx(), indicatorY),
+                    strokeWidth = strokeDp.toPx()
                 )
             }
         }

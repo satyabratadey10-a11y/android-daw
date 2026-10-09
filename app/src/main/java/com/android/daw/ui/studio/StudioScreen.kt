@@ -276,6 +276,8 @@ private fun ExportProgressModal(
                 )
 
                 // Custom Canvas Linear Progress Bar
+                val gutterColor = Daw.colors.n0Workspace
+                val progressColor = Daw.colors.mint.base
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -284,7 +286,7 @@ private fun ExportProgressModal(
                     val trackRadius = 4f
                     // Track gutter
                     drawRoundRect(
-                        color = Daw.colors.n0Workspace,
+                        color = gutterColor,
                         size = size,
                         cornerRadius = CornerRadius(trackRadius, trackRadius)
                     )
@@ -292,7 +294,7 @@ private fun ExportProgressModal(
                     val activeWidth = size.width * (progressPercent / 100f).coerceIn(0f, 1f)
                     if (activeWidth > 0f) {
                         drawRoundRect(
-                            color = Daw.colors.mint.base,
+                            color = progressColor,
                             size = Size(activeWidth, size.height),
                             cornerRadius = CornerRadius(trackRadius, trackRadius)
                         )

@@ -62,25 +62,35 @@ fun VerticalFader(
     val travel = remember(volumeLinear) { linearToTravel(volumeLinear) }
     val dbReadout = remember(volumeLinear) { linearToDbReadout(volumeLinear) }
 
+    val colors = Daw.colors
+    val space = Daw.space
+    val radii = Daw.radii
+    val thumbHeightDp = space.faderThumbHeight
+    val thumbWidthDp = space.faderThumbWidth
+    val trackWidthDp = space.faderTrackWidth
+    val hairlineDp = space.hairline
+    val strokeDp = space.stroke
+    val radiusXsDp = radii.xsDp
+
     Column(
         modifier = modifier
-            .sizeIn(minWidth = Daw.space.touchTargetMin, minHeight = Daw.space.touchTargetMin)
+            .sizeIn(minWidth = space.touchTargetMin, minHeight = space.touchTargetMin)
             .alpha(if (enabled) 1f else 0.38f),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Daw.space.xs)
+        verticalArrangement = Arrangement.spacedBy(space.xs)
     ) {
         // Readout Header: db value in mono font
         Text(
             text = dbReadout,
             style = Daw.type.mono,
-            color = if (volumeLinear > 1.01f) activeColor else Daw.colors.inkOnDark,
+            color = if (volumeLinear > 1.01f) activeColor else colors.inkOnDark,
             maxLines = 1
         )
 
         // Fader Track + Thumb interactive Box
         Box(
             modifier = Modifier
-                .width(Daw.space.faderThumbWidth)
+                .width(space.faderThumbWidth)
                 .height(height)
                 .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
@@ -90,7 +100,7 @@ fun VerticalFader(
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         },
                         onTap = { offset ->
-                            val thumbHeightPx = Daw.space.faderThumbHeight.toPx()
+                            val thumbHeightPx = thumbHeightDp.toPx()
                             val usableHeightPx = size.height - thumbHeightPx
                             if (usableHeightPx > 0f) {
                                 val clickedTravel = (1f - (offset.y - thumbHeightPx / 2f) / usableHeightPx).coerceIn(0f, 1f)
@@ -107,7 +117,7 @@ fun VerticalFader(
                     if (!enabled) return@pointerInput
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        val thumbHeightPx = Daw.space.faderThumbHeight.toPx()
+                        val thumbHeightPx = thumbHeightDp.toPx()
                         val usableHeightPx = size.height - thumbHeightPx
                         if (usableHeightPx > 0f) {
                             val currentTravel = linearToTravel(volumeLinear)
@@ -132,23 +142,23 @@ fun VerticalFader(
                     }
                 }
         ) {
-            val trackColor = Daw.colors.n1Grid
+            val trackColor = colors.n1Grid
             val trackActiveColor = activeColor
-            val thumbColor = Daw.colors.n4Control
-            val thumbRidgeColor = Daw.colors.inkOnLight
-            val tickColor = Daw.colors.n3Raised
+            val thumbColor = colors.n4Control
+            val thumbRidgeColor = colors.inkOnLight
+            val tickColor = colors.n3Raised
             val zeroTickColor = activeColor
 
             Canvas(modifier = Modifier.matchParentSize()) {
                 val canvasWidth = size.width
                 val canvasHeight = size.height
 
-                val thumbHeightPx = Daw.space.faderThumbHeight.toPx()
-                val thumbWidthPx = Daw.space.faderThumbWidth.toPx()
-                val trackWidthPx = Daw.space.faderTrackWidth.toPx()
-                val hairlinePx = Daw.space.hairline.toPx()
-                val strokePx = Daw.space.stroke.toPx()
-                val radiusXsPx = Daw.radii.xsDp.toPx()
+                val thumbHeightPx = thumbHeightDp.toPx()
+                val thumbWidthPx = thumbWidthDp.toPx()
+                val trackWidthPx = trackWidthDp.toPx()
+                val hairlinePx = hairlineDp.toPx()
+                val strokePx = strokeDp.toPx()
+                val radiusXsPx = radiusXsDp.toPx()
 
                 val usableHeightPx = canvasHeight - thumbHeightPx
                 val trackLeft = (canvasWidth - trackWidthPx) / 2f

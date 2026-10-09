@@ -48,10 +48,21 @@ fun LevelMeter(
     onResetClip: () -> Unit = {},
     showScaleLabels: Boolean = true
 ) {
+    val colors = Daw.colors
+    val space = Daw.space
+    val radii = Daw.radii
+
+    val strokeDp = space.stroke
+    val hairlineDp = space.hairline
+    val coralColor = colors.coral.base
+    val n3Raised = colors.n3Raised
+    val inkOnDark = colors.inkOnDark
+    val n0Workspace = colors.n0Workspace
+
     Row(
         modifier = modifier
-            .sizeIn(minWidth = Daw.space.touchTargetMin, minHeight = Daw.space.touchTargetMin)
-            .padding(vertical = Daw.space.xs),
+            .sizeIn(minWidth = space.touchTargetMin, minHeight = space.touchTargetMin)
+            .padding(vertical = space.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(
@@ -61,42 +72,44 @@ fun LevelMeter(
             // Latching Clipping LED indicator
             Box(
                 modifier = Modifier
-                    .size(Daw.space.xl)
+                    .size(space.xl)
                     .clip(CircleShape)
                     .clickable(onClick = onResetClip),
                 contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.size(Daw.space.sm)) {
+                Canvas(modifier = Modifier.size(space.sm)) {
                     val level = levelProvider()
                     val isClipped = level.hasClipped
                     drawCircle(
-                        color = if (isClipped) Daw.colors.coral.base else Daw.colors.n3Raised
+                        color = if (isClipped) coralColor else n3Raised
                     )
                     if (isClipped) {
                         drawCircle(
-                            color = Daw.colors.inkOnDark,
-                            radius = Daw.space.stroke.toPx()
+                            color = inkOnDark,
+                            radius = strokeDp.toPx()
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(Daw.space.xs))
+            Spacer(modifier = Modifier.height(space.xs))
 
             // Stereo Peak & RMS Level Bars Canvas (Draw-phase evaluated)
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .width(Daw.space.lg)
-                    .clip(Daw.radii.xs)
-                    .background(Daw.colors.n1Grid)
+                    .width(space.lg)
+                    .clip(radii.xs)
+                    .background(colors.n1Grid)
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val level = levelProvider()
                     val width = size.width
                     val height = size.height
+                    val strokePx = strokeDp.toPx()
+                    val hairlinePx = hairlineDp.toPx()
 
-                    val channelWidth = (width - Daw.space.stroke.toPx()) / 2f
+                    val channelWidth = (width - strokePx) / 2f
 
                     // Left channel bar
                     drawChannelMeter(
@@ -106,22 +119,22 @@ fun LevelMeter(
                         rmsLinear = level.rmsLeft,
                         height = height,
                         channelColor = channelColor,
-                        clipColor = Daw.colors.coral.base,
-                        gutterColor = Daw.colors.n0Workspace,
-                        tickColor = Daw.colors.inkOnDark
+                        clipColor = coralColor,
+                        gutterColor = n0Workspace,
+                        tickColor = inkOnDark
                     )
 
                     // Right channel bar
                     drawChannelMeter(
-                        xOffset = channelWidth + Daw.space.stroke.toPx(),
+                        xOffset = channelWidth + strokePx,
                         channelWidth = channelWidth,
                         peakLinear = level.peakRight,
                         rmsLinear = level.rmsRight,
                         height = height,
                         channelColor = channelColor,
-                        clipColor = Daw.colors.coral.base,
-                        gutterColor = Daw.colors.n0Workspace,
-                        tickColor = Daw.colors.inkOnDark
+                        clipColor = coralColor,
+                        gutterColor = n0Workspace,
+                        tickColor = inkOnDark
                     )
 
                     // Draw reference grid lines (0 dB, -12 dB, -24 dB)
@@ -130,22 +143,22 @@ fun LevelMeter(
                     val yMinus24 = height * (1f - dbToNormalizedHeight(-24f))
 
                     drawLine(
-                        color = Daw.colors.inkOnDark.copy(alpha = 0.5f),
+                        color = inkOnDark.copy(alpha = 0.5f),
                         start = Offset(0f, y0dB),
                         end = Offset(width, y0dB),
-                        strokeWidth = Daw.space.hairline.toPx()
+                        strokeWidth = hairlinePx
                     )
                     drawLine(
-                        color = Daw.colors.inkOnDark.copy(alpha = 0.25f),
+                        color = inkOnDark.copy(alpha = 0.25f),
                         start = Offset(0f, yMinus12),
                         end = Offset(width, yMinus12),
-                        strokeWidth = Daw.space.hairline.toPx() / 2f
+                        strokeWidth = hairlinePx / 2f
                     )
                     drawLine(
-                        color = Daw.colors.inkOnDark.copy(alpha = 0.25f),
+                        color = inkOnDark.copy(alpha = 0.25f),
                         start = Offset(0f, yMinus24),
                         end = Offset(width, yMinus24),
-                        strokeWidth = Daw.space.hairline.toPx() / 2f
+                        strokeWidth = hairlinePx / 2f
                     )
                 }
             }
