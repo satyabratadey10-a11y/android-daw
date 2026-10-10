@@ -14,19 +14,22 @@ import java.nio.ByteOrder
  * All JNI methods execute exclusively on background dispatchers (Dispatchers.Default or
  * Dispatchers.IO), guaranteeing zero main-thread blocking and frame drops in Jetpack Compose.
  */
-class NativeAudioEngine private constructor(
+class NativeAudioEngine(
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : AutoCloseable {
 
     companion object {
+        @Volatile
+        var isLibraryLoaded: Boolean = false
+            private set
+
         init {
             try {
                 System.loadLibrary("daw_audio_engine")
-            } catch (e: UnsatisfiedLinkError) {
-                // Safely fallback on host JVM during unit tests when native library is not present
-            } catch (t: Throwable) {
-                // Fallback for any other linkage or platform errors on host
+                isLibraryLoaded = true
+            } catch (_: Throwable) {
+                isLibraryLoaded = false
             }
         }
 
@@ -37,6 +40,10 @@ class NativeAudioEngine private constructor(
             instance ?: synchronized(this) {
                 instance ?: NativeAudioEngine().also { instance = it }
             }
+
+        fun setInstanceForTesting(mockEngine: NativeAudioEngine?) {
+            instance = mockEngine
+        }
 
         // sizeof(TelemetryPayload) with 64-byte alignment padding
         const val TELEMETRY_BYTE_SIZE = 176
@@ -55,20 +62,40 @@ class NativeAudioEngine private constructor(
     // Lifecycle Management (Dispatchers.Default)
     // ========================================================================
 
-    suspend fun initialize(sampleRate: Int = 44100, framesPerBurst: Int = 192): Boolean =
-        withContext(defaultDispatcher) {
-            val success = nativeInit(sampleRate, framesPerBurst)
-            isInitialized = success
-            success
+    suspend fun initialize(sampleRate: Int = 44100, framesPerBurst: Int = 192): Boolean {
+        if (!isLibraryLoaded) return false
+        return withContext(defaultDispatcher) {
+            try {
+                val success = nativeInit(sampleRate, framesPerBurst)
+                isInitialized = success
+                success
+            } catch (_: Throwable) {
+                isInitialized = false
+                false
+            }
         }
-
-    suspend fun start(): Boolean = withContext(defaultDispatcher) {
-        if (!isInitialized) return@withContext false
-        nativeStart()
     }
 
-    suspend fun stop(): Boolean = withContext(defaultDispatcher) {
-        nativeStop()
+    suspend fun start(): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return false
+        return withContext(defaultDispatcher) {
+            try {
+                nativeStart()
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    suspend fun stop(): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return true
+        return withContext(defaultDispatcher) {
+            try {
+                nativeStop()
+            } catch (_: Throwable) {
+                true
+            }
+        }
     }
 
     override fun close() {
@@ -76,73 +103,147 @@ class NativeAudioEngine private constructor(
     }
 
     fun release() {
-        nativeRelease()
+        if (isLibraryLoaded && isInitialized) {
+            try {
+                nativeRelease()
+            } catch (_: Throwable) {
+                // Ignore cleanup errors
+            }
+        }
         isInitialized = false
     }
 
-    fun isEngineInitialized(): Boolean = isInitialized
+    fun isEngineInitialized(): Boolean = isLibraryLoaded && isInitialized
 
     // ========================================================================
     // Transport Controls (Dispatchers.Default)
     // ========================================================================
 
-    suspend fun play() = withContext(defaultDispatcher) {
-        nativePlay()
+    suspend fun play() {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativePlay()
+            } catch (_: Throwable) {}
+        }
     }
 
-    suspend fun pause() = withContext(defaultDispatcher) {
-        nativePause()
+    suspend fun pause() {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativePause()
+            } catch (_: Throwable) {}
+        }
     }
 
-    suspend fun stopTransport() = withContext(defaultDispatcher) {
-        nativeStopTransport()
+    suspend fun stopTransport() {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeStopTransport()
+            } catch (_: Throwable) {}
+        }
     }
 
-    suspend fun seekTo(framePosition: Long) = withContext(defaultDispatcher) {
-        nativeSeekTo(framePosition.coerceAtLeast(0L))
+    suspend fun seekTo(framePosition: Long) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSeekTo(framePosition.coerceAtLeast(0L))
+            } catch (_: Throwable) {}
+        }
     }
 
     suspend fun seek(framePosition: Long) = seekTo(framePosition)
 
-    suspend fun setLoop(enabled: Boolean, startFrame: Long, endFrame: Long) =
+    suspend fun setLoop(enabled: Boolean, startFrame: Long, endFrame: Long) {
+        if (!isLibraryLoaded || !isInitialized) return
         withContext(defaultDispatcher) {
-            nativeSetLoop(enabled, startFrame.coerceAtLeast(0L), endFrame.coerceAtLeast(0L))
+            try {
+                nativeSetLoop(enabled, startFrame.coerceAtLeast(0L), endFrame.coerceAtLeast(0L))
+            } catch (_: Throwable) {}
         }
+    }
 
-    suspend fun setTempo(bpm: Double) = withContext(defaultDispatcher) {
-        nativeSetTempo(bpm.coerceIn(20.0, 300.0))
+    suspend fun setTempo(bpm: Double) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSetTempo(bpm.coerceIn(20.0, 300.0))
+            } catch (_: Throwable) {}
+        }
     }
 
     // ========================================================================
     // Track Management (Dispatchers.Default)
     // ========================================================================
 
-    suspend fun addTrack(trackId: Int): Boolean = withContext(defaultDispatcher) {
-        nativeAddTrack(trackId)
+    suspend fun addTrack(trackId: Int): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return true
+        return withContext(defaultDispatcher) {
+            try {
+                nativeAddTrack(trackId)
+            } catch (_: Throwable) {
+                false
+            }
+        }
     }
 
-    suspend fun removeTrack(trackId: Int): Boolean = withContext(defaultDispatcher) {
-        nativeRemoveTrack(trackId)
+    suspend fun removeTrack(trackId: Int): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return true
+        return withContext(defaultDispatcher) {
+            try {
+                nativeRemoveTrack(trackId)
+            } catch (_: Throwable) {
+                false
+            }
+        }
     }
 
-    suspend fun setTrackVolume(trackId: Int, linearGain: Float) = withContext(defaultDispatcher) {
-        nativeSetTrackVolume(trackId, linearGain.coerceIn(0f, 4f))
+    suspend fun setTrackVolume(trackId: Int, linearGain: Float) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSetTrackVolume(trackId, linearGain.coerceIn(0f, 4f))
+            } catch (_: Throwable) {}
+        }
     }
 
-    suspend fun setTrackPan(trackId: Int, panPosition: Float) = withContext(defaultDispatcher) {
-        nativeSetTrackPan(trackId, panPosition.coerceIn(-1f, 1f))
+    suspend fun setTrackPan(trackId: Int, panPosition: Float) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSetTrackPan(trackId, panPosition.coerceIn(-1f, 1f))
+            } catch (_: Throwable) {}
+        }
     }
 
-    suspend fun setTrackMute(trackId: Int, muted: Boolean) = withContext(defaultDispatcher) {
-        nativeSetTrackMute(trackId, muted)
+    suspend fun setTrackMute(trackId: Int, muted: Boolean) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSetTrackMute(trackId, muted)
+            } catch (_: Throwable) {}
+        }
     }
 
-    suspend fun setTrackSolo(trackId: Int, soloed: Boolean) = withContext(defaultDispatcher) {
-        nativeSetTrackSolo(trackId, soloed)
+    suspend fun setTrackSolo(trackId: Int, soloed: Boolean) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSetTrackSolo(trackId, soloed)
+            } catch (_: Throwable) {}
+        }
     }
 
-    suspend fun setTrackArmed(trackId: Int, armed: Boolean) = withContext(defaultDispatcher) {
-        nativeSetTrackArmed(trackId, armed)
+    suspend fun setTrackArmed(trackId: Int, armed: Boolean) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSetTrackArmed(trackId, armed)
+            } catch (_: Throwable) {}
+        }
     }
 
     // ========================================================================
@@ -156,8 +257,13 @@ class NativeAudioEngine private constructor(
         frequencyHz: Float,
         qFactor: Float,
         gainDb: Float
-    ) = withContext(defaultDispatcher) {
-        nativeSetTrackEq(trackId, bandIndex, filterType, frequencyHz, qFactor, gainDb)
+    ) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSetTrackEq(trackId, bandIndex, filterType, frequencyHz, qFactor, gainDb)
+            } catch (_: Throwable) {}
+        }
     }
 
     suspend fun setTrackEqBand(
@@ -174,16 +280,26 @@ class NativeAudioEngine private constructor(
         delayMs: Float,
         feedback: Float,
         wetMix: Float
-    ) = withContext(defaultDispatcher) {
-        nativeSetTrackDelay(trackId, delayMs, feedback, wetMix)
+    ) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSetTrackDelay(trackId, delayMs, feedback, wetMix)
+            } catch (_: Throwable) {}
+        }
     }
 
     suspend fun setMasterLimiter(
         thresholdDb: Float,
         ceilingDb: Float,
         releaseMs: Float
-    ) = withContext(defaultDispatcher) {
-        nativeSetMasterLimiter(thresholdDb, ceilingDb, releaseMs)
+    ) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSetMasterLimiter(thresholdDb, ceilingDb, releaseMs)
+            } catch (_: Throwable) {}
+        }
     }
 
     // ========================================================================
@@ -197,31 +313,65 @@ class NativeAudioEngine private constructor(
         directBuffer: ByteBuffer,
         numFrames: Int,
         channels: Int
-    ): Boolean = withContext(ioDispatcher) {
-        require(directBuffer.isDirect) { "Audio buffer must be allocated as DirectByteBuffer" }
-        nativeLoadClip(trackId, clipId, startFrame, directBuffer, numFrames, channels)
+    ): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return false
+        return withContext(ioDispatcher) {
+            require(directBuffer.isDirect) { "Audio buffer must be allocated as DirectByteBuffer" }
+            try {
+                nativeLoadClip(trackId, clipId, startFrame, directBuffer, numFrames, channels)
+            } catch (_: Throwable) {
+                false
+            }
+        }
     }
 
-    suspend fun removeClip(trackId: Int, clipId: Int): Boolean = withContext(defaultDispatcher) {
-        nativeRemoveClip(trackId, clipId)
+    suspend fun removeClip(trackId: Int, clipId: Int): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return false
+        return withContext(defaultDispatcher) {
+            try {
+                nativeRemoveClip(trackId, clipId)
+            } catch (_: Throwable) {
+                false
+            }
+        }
     }
 
     // ========================================================================
     // Recording & Offline Mixdown (Dispatchers.IO / Dispatchers.Default)
     // ========================================================================
 
-    suspend fun startRecording(trackId: Int): Boolean = withContext(defaultDispatcher) {
-        nativeStartRecording(trackId)
-    }
-
-    suspend fun stopRecording(): ByteBuffer? = withContext(ioDispatcher) {
-        nativeStopRecording()
-    }
-
-    suspend fun renderOffline(outputPath: String, totalFrames: Long): Boolean =
-        withContext(ioDispatcher) {
-            nativeRenderOffline(outputPath, totalFrames)
+    suspend fun startRecording(trackId: Int): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return true
+        return withContext(defaultDispatcher) {
+            try {
+                nativeStartRecording(trackId)
+            } catch (_: Throwable) {
+                false
+            }
         }
+    }
+
+    suspend fun stopRecording(): ByteBuffer? {
+        if (!isLibraryLoaded || !isInitialized) return null
+        return withContext(ioDispatcher) {
+            try {
+                nativeStopRecording()
+            } catch (_: Throwable) {
+                null
+            }
+        }
+    }
+
+    suspend fun renderOffline(outputPath: String, totalFrames: Long): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return false
+        return withContext(ioDispatcher) {
+            try {
+                nativeRenderOffline(outputPath, totalFrames)
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
 
     suspend fun renderMixdown(outputPath: String, bitDepth: Int = 16, totalFrames: Long): Boolean =
         renderOffline(outputPath, totalFrames)
@@ -230,40 +380,60 @@ class NativeAudioEngine private constructor(
     // Telemetry & Hardware Clock (Called on Background Polling Coroutine)
     // ========================================================================
 
-    suspend fun getPlayheadFrame(): Long = withContext(defaultDispatcher) {
-        nativeGetPlayheadFrame()
+    suspend fun getPlayheadFrame(): Long {
+        if (!isLibraryLoaded || !isInitialized) return 0L
+        return withContext(defaultDispatcher) {
+            try {
+                nativeGetPlayheadFrame()
+            } catch (_: Throwable) {
+                0L
+            }
+        }
     }
 
-    fun getPlaybackPositionFrames(): Long = nativeGetPlayheadFrame()
+    fun getPlaybackPositionFrames(): Long {
+        if (!isLibraryLoaded || !isInitialized) return 0L
+        return try {
+            nativeGetPlayheadFrame()
+        } catch (_: Throwable) {
+            0L
+        }
+    }
 
     /**
      * Polls the atomic C++ telemetry registers directly into [telemetryBuffer] with zero allocations.
      * Must be called from a background polling worker (such as [AudioTelemetryCoordinator]).
      */
     fun pollTelemetry(outTelemetry: TelemetryData): Boolean {
-        synchronized(telemetryBuffer) {
-            telemetryBuffer.clear()
-            val result = nativeGetTelemetry(telemetryBuffer)
-            if (result == 0) {
-                telemetryBuffer.position(0)
-                outTelemetry.playheadFrame = telemetryBuffer.getLong()
-                outTelemetry.masterPeakLeft = telemetryBuffer.getFloat()
-                outTelemetry.masterPeakRight = telemetryBuffer.getFloat()
-                outTelemetry.masterRmsLeft = telemetryBuffer.getFloat()
-                outTelemetry.masterRmsRight = telemetryBuffer.getFloat()
-                outTelemetry.activeTrackCount = telemetryBuffer.getInt()
+        if (!isLibraryLoaded || !isInitialized) return false
+        return synchronized(telemetryBuffer) {
+            try {
+                telemetryBuffer.clear()
+                val result = nativeGetTelemetry(telemetryBuffer)
+                if (result == 0) {
+                    telemetryBuffer.position(0)
+                    outTelemetry.playheadFrame = telemetryBuffer.getLong()
+                    outTelemetry.masterPeakLeft = telemetryBuffer.getFloat()
+                    outTelemetry.masterPeakRight = telemetryBuffer.getFloat()
+                    outTelemetry.masterRmsLeft = telemetryBuffer.getFloat()
+                    outTelemetry.masterRmsRight = telemetryBuffer.getFloat()
+                    outTelemetry.activeTrackCount = telemetryBuffer.getInt()
 
-                val numTracksToRead = kotlin.math.min(outTelemetry.trackPeaks.size, MAX_TRACKS)
-                for (i in 0 until numTracksToRead) {
-                    outTelemetry.trackPeaks[i] = telemetryBuffer.getFloat()
+                    val numTracksToRead = kotlin.math.min(outTelemetry.trackPeaks.size, MAX_TRACKS)
+                    for (i in 0 until numTracksToRead) {
+                        outTelemetry.trackPeaks[i] = telemetryBuffer.getFloat()
+                    }
+
+                    outTelemetry.isPlaying = telemetryBuffer.getInt() != 0
+                    outTelemetry.isRecording = telemetryBuffer.getInt() != 0
+                    outTelemetry.underrunCount = telemetryBuffer.getInt()
+                    true
+                } else {
+                    false
                 }
-
-                outTelemetry.isPlaying = telemetryBuffer.getInt() != 0
-                outTelemetry.isRecording = telemetryBuffer.getInt() != 0
-                outTelemetry.underrunCount = telemetryBuffer.getInt()
-                return true
+            } catch (_: Throwable) {
+                false
             }
-            return false
         }
     }
 

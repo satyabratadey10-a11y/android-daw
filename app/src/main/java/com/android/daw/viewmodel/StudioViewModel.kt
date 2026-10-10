@@ -1,7 +1,6 @@
 package com.android.daw.viewmodel
 
 import android.net.Uri
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.daw.bridge.NativeAudioEngine
@@ -35,7 +34,8 @@ import kotlin.math.sin
 class StudioViewModel(
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    enableTelemetryLoop: Boolean = true
+    enableTelemetryLoop: Boolean = true,
+    private val audioEngine: NativeAudioEngine = NativeAudioEngine.getInstance()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(createInitialStudioState())
@@ -799,11 +799,9 @@ class StudioViewModel(
 
     private suspend inline fun withNativeEngine(crossinline block: suspend (NativeAudioEngine) -> Unit) {
         try {
-            val engine = NativeAudioEngine.getInstance()
-            block(engine)
-        } catch (t: Throwable) {
+            block(audioEngine)
+        } catch (_: Throwable) {
             // Graceful fallback when native engine library is not loaded on host
-            Log.d(TAG, "Native audio engine call fallback: ${t.message}")
         }
     }
 

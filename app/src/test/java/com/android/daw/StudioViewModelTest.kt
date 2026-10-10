@@ -1,5 +1,6 @@
 package com.android.daw
 
+import com.android.daw.bridge.NativeAudioEngine
 import com.android.daw.viewmodel.StudioAction
 import com.android.daw.viewmodel.StudioViewModel
 import com.android.daw.viewmodel.TransportState
@@ -33,10 +34,15 @@ class StudioViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
+        val testEngine = NativeAudioEngine(
+            defaultDispatcher = testDispatcher,
+            ioDispatcher = testDispatcher
+        )
         viewModel = StudioViewModel(
             defaultDispatcher = testDispatcher,
             ioDispatcher = testDispatcher,
-            enableTelemetryLoop = false
+            enableTelemetryLoop = false,
+            audioEngine = testEngine
         )
     }
 
