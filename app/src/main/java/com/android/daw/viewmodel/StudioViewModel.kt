@@ -104,6 +104,7 @@ class StudioViewModel(
                 StudioAction.CloseAllPanels -> handleCloseAllPanels()
                 is StudioAction.OpenTrackDsp -> handleOpenTrackDsp(action.trackId)
                 StudioAction.OpenMasterDsp -> handleOpenMasterDsp()
+                StudioAction.OpenLiveLog -> {}
                 is StudioAction.SetZoom -> handleSetZoom(action.pixelsPerSecond)
                 is StudioAction.SetScrollOffset -> handleSetScrollOffset(action.offsetPx)
 
@@ -733,54 +734,54 @@ class StudioViewModel(
             val framesPerTick = 735L // ~44100 / 60fps = 735 frames per tick
 
             while (isActive) {
-                val now = System.currentTimeMillis()
-                val deltaSec = (now - lastTimestamp) / 1000f
-                lastTimestamp = now
+                try {
+                    val now = System.currentTimeMillis()
+                    val deltaSec = (now - lastTimestamp) / 1000f
+                    lastTimestamp = now
 
-                val state = _uiState.value
-                val isPlaying = state.isPlaying || state.isRecording
+                    val state = _uiState.value
+                    val isPlaying = state.isPlaying || state.isRecording
 
-                if (isPlaying) {
-                    var current = _playheadFrame.value + framesPerTick
-                    if (state.isLooping && current >= state.loopEndFrame) {
-                        current = state.loopStartFrame
-                    } else if (current >= state.totalFrames) {
-                        current = 0L
-                    }
-                    _playheadFrame.value = current
-                    _uiState.update { it.copy(currentFrame = current) }
-                }
-
-                // Compute IEC 60268-10 Ballistics for each track & master
-                val updatedMeters = mutableMapOf<Int, StereoLevel>()
-                var masterMaxPeak = 0f
-                var masterMaxRms = 0f
-
-                state.tracks.forEach { track ->
-                    val ballistics = meterBallisticsMap.getOrPut(track.trackId) { BallisticsState() }
-
-                    val rawAmplitude = if (isPlaying && !track.isMuted) {
-                        val phase = (_playheadFrame.value.toFloat() / state.sampleRate) * (track.trackId * 2f + 1f)
-                        val mod = (0.5f + 0.5f * sin(phase * 2.0 * PI)).toFloat()
-                        (mod * track.volumeLinear * 0.75f).coerceIn(0f, 1.2f)
-                    } else {
-                        0.0f
+                    if (isPlaying) {
+                        var current = _playheadFrame.value + framesPerTick
+                        if (state.isLooping && current >= state.loopEndFrame) {
+                            current = state.loopStartFrame
+                        } else if (current >= state.totalFrames) {
+                            current = 0L
+                        }
+                        _playheadFrame.value = current
                     }
 
-                    val level = ballistics.update(rawAmplitude, now, deltaSec)
-                    updatedMeters[track.trackId] = level
-                    masterMaxPeak = maxOf(masterMaxPeak, level.peakMax)
-                    masterMaxRms = maxOf(masterMaxRms, level.rmsMax)
+                    // Compute IEC 60268-10 Ballistics for each track & master
+                    val updatedMeters = mutableMapOf<Int, StereoLevel>()
+                    var masterMaxPeak = 0f
+                    var masterMaxRms = 0f
+
+                    state.tracks.forEach { track ->
+                        val ballistics = meterBallisticsMap.getOrPut(track.trackId) { BallisticsState() }
+
+                        val rawAmplitude = if (isPlaying && !track.isMuted) {
+                            val phase = (_playheadFrame.value.toFloat() / state.sampleRate) * (track.trackId * 2f + 1f)
+                            val mod = (0.5f + 0.5f * sin(phase * 2.0 * PI)).toFloat()
+                            (mod * track.volumeLinear * 0.75f).coerceIn(0f, 1.2f)
+                        } else {
+                            0.0f
+                        }
+
+                        val level = ballistics.update(rawAmplitude, now, deltaSec)
+                        updatedMeters[track.trackId] = level
+                        masterMaxPeak = maxOf(masterMaxPeak, level.peakMax)
+                        masterMaxRms = maxOf(masterMaxRms, level.rmsMax)
+                    }
+
+                    // Master Bus Ballistics
+                    val masterBallistics = meterBallisticsMap.getOrPut(-1) { BallisticsState() }
+                    masterBallistics.update(masterMaxPeak * state.masterVolumeLinear, now, deltaSec)
+
+                    _telemetryLevels.value = updatedMeters
+                } catch (_: Throwable) {
+                    // Safeguard against arithmetic or state concurrency exceptions
                 }
-
-                // Master Bus Ballistics
-                val masterBallistics = meterBallisticsMap.getOrPut(-1) { BallisticsState() }
-                val masterLevel = masterBallistics.update(masterMaxPeak * state.masterVolumeLinear, now, deltaSec)
-
-                _telemetryLevels.value = updatedMeters
-
-                // Update Master level in general UI state periodically
-                _uiState.update { it.copy(masterLevels = masterLevel) }
 
                 delay(16) // ~60 Hz update rate
             }

@@ -299,6 +299,19 @@ fun TransportBar(
                     )
                 }
 
+                // Diagnostic LOG Trigger
+                TransportIconCaption(
+                    label = "LOG",
+                    onClick = { onAction(StudioAction.OpenLiveLog) }
+                ) {
+                    androidx.compose.foundation.Image(
+                        imageVector = DawIcons.Settings,
+                        contentDescription = "Live Logs",
+                        colorFilter = ColorFilter.tint(Daw.colors.sky.base),
+                        modifier = Modifier.size(Daw.space.iconMin)
+                    )
+                }
+
                 // Close / Quit button
                 DawIconButton(
                     icon = DawIcons.Close,

@@ -49,6 +49,7 @@ sealed interface StudioAction {
     data object CloseAllPanels : StudioAction
     data class OpenTrackDsp(val trackId: Int) : StudioAction
     data object OpenMasterDsp : StudioAction
+    data object OpenLiveLog : StudioAction
     data class SetZoom(val pixelsPerSecond: Float) : StudioAction
     data class SetScrollOffset(val offsetPx: Float) : StudioAction
 

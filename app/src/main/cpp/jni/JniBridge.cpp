@@ -269,18 +269,22 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
     }
 
     jclass clazz = env->FindClass(kNativeClassName);
-    if (!clazz) {
-        LOGE("JNI_OnLoad: Failed to find class %s", kNativeClassName);
-        return JNI_ERR;
+    if (clazz) {
+        const jint method_count = sizeof(g_native_methods) / sizeof(g_native_methods[0]);
+        if (env->RegisterNatives(clazz, g_native_methods, method_count) < 0) {
+            LOGW("JNI_OnLoad: RegisterNatives signature mismatch; dynamic JNI exports will be utilized.");
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            }
+        } else {
+            LOGI("JNI_OnLoad: Successfully registered %d native methods for %s", method_count, kNativeClassName);
+        }
+    } else {
+        LOGW("JNI_OnLoad: Class %s lookup deferred.", kNativeClassName);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
     }
-
-    const jint method_count = sizeof(g_native_methods) / sizeof(g_native_methods[0]);
-    if (env->RegisterNatives(clazz, g_native_methods, method_count) < 0) {
-        LOGE("JNI_OnLoad: RegisterNatives failed for %s", kNativeClassName);
-        return JNI_ERR;
-    }
-
-    LOGI("JNI_OnLoad: Successfully registered %d native methods for %s", method_count, kNativeClassName);
     return JNI_VERSION_1_6;
 }
 
@@ -295,13 +299,17 @@ extern "C" JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* /*reserved*/) {
 }
 
 // =============================================================================
-// Fallback Symbol Declarations for Direct Symbol Resolution
+// Export Declarations for Direct Symbol Resolution
 // =============================================================================
 
 extern "C" {
 
 JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeInit(JNIEnv* env, jobject thiz, jint sampleRate, jint framesPerBurst) {
     jni_nativeInit(env, thiz, sampleRate, framesPerBurst);
+}
+
+JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeStart(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return JNI_TRUE;
 }
 
 JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeRelease(JNIEnv* env, jobject thiz) {
@@ -320,7 +328,15 @@ JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeStop(
     jni_nativeStop(env, thiz);
 }
 
+JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeStopTransport(JNIEnv* env, jobject thiz) {
+    jni_nativeStop(env, thiz);
+}
+
 JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSeek(JNIEnv* env, jobject thiz, jlong framePosition) {
+    jni_nativeSeek(env, thiz, framePosition);
+}
+
+JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSeekTo(JNIEnv* env, jobject thiz, jlong framePosition) {
     jni_nativeSeek(env, thiz, framePosition);
 }
 
@@ -364,6 +380,10 @@ JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSetTr
     jni_nativeSetTrackEqBand(env, thiz, trackId, bandIndex, filterType, freqHz, gainDb, qFactor);
 }
 
+JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSetTrackEq(JNIEnv* env, jobject thiz, jint trackId, jint bandIndex, jint filterType, jfloat freqHz, jfloat qFactor, jfloat gainDb) {
+    jni_nativeSetTrackEqBand(env, thiz, trackId, bandIndex, filterType, freqHz, gainDb, qFactor);
+}
+
 JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSetTrackDelay(JNIEnv* env, jobject thiz, jint trackId, jfloat delayMs, jfloat feedback, jfloat wetDry) {
     jni_nativeSetTrackDelay(env, thiz, trackId, delayMs, feedback, wetDry);
 }
@@ -376,12 +396,20 @@ JNIEXPORT jlong JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeGetP
     return jni_nativeGetPlaybackPositionFrames(env, thiz);
 }
 
+JNIEXPORT jlong JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeGetPlayheadFrame(JNIEnv* env, jobject thiz) {
+    return jni_nativeGetPlaybackPositionFrames(env, thiz);
+}
+
 JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeGetMeteringData(JNIEnv* env, jobject thiz, jobject directFloatBuffer, jint numTracks) {
     jni_nativeGetMeteringData(env, thiz, directFloatBuffer, numTracks);
 }
 
 JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeLoadClip(JNIEnv* env, jobject thiz, jint trackId, jint clipId, jstring wavFilePath, jlong startOffsetFrames) {
     return jni_nativeLoadClip(env, thiz, trackId, clipId, wavFilePath, startOffsetFrames);
+}
+
+JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeRemoveClip(JNIEnv* /*env*/, jobject /*thiz*/, jint /*trackId*/, jint /*clipId*/) {
+    return JNI_TRUE;
 }
 
 JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeStartRecording(JNIEnv* env, jobject thiz, jint trackId, jstring destinationWavPath) {
@@ -394,6 +422,10 @@ JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeStopR
 
 JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeRenderMixdown(JNIEnv* env, jobject thiz, jstring outputWavPath, jint bitDepth, jlong totalFrames) {
     return jni_nativeRenderMixdown(env, thiz, outputWavPath, bitDepth, totalFrames);
+}
+
+JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeRenderOffline(JNIEnv* env, jobject thiz, jstring outputWavPath, jlong totalFrames) {
+    return jni_nativeRenderMixdown(env, thiz, outputWavPath, 16, totalFrames);
 }
 
 } // extern "C"

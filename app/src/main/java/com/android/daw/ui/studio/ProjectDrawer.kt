@@ -268,6 +268,18 @@ fun ProjectDrawer(
                             ProjectInfoRow("Buffer Size", "192 Frames (Low Latency)")
                             ProjectInfoRow("CPU Multi-threading", "Enabled (ARM64 Neon)")
                             ProjectInfoRow("TPDF Dithering", "Enabled")
+
+                            Spacer(modifier = Modifier.height(Daw.space.sm))
+
+                            DrawerButton(
+                                text = "VIEW LIVE LOGS & LOGCAT",
+                                onClick = {
+                                    onDismiss()
+                                    onAction(StudioAction.OpenLiveLog)
+                                },
+                                isPrimary = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
 
                         else -> {

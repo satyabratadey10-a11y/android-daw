@@ -5,6 +5,14 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
+    <!-- External storage permissions for log export on older Android releases -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <!-- Audio hardware capabilities -->
     <uses-feature
         android:name="android.hardware.audio.output"
@@ -26,6 +34,7 @@
         android:label="Android DAW"
         android:roundIcon="@android:drawable/ic_media_play"
         android:supportsRtl="true"
+        android:requestLegacyExternalStorage="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
         <activity
@@ -39,6 +48,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Isolated Crash & Diagnostics Activity -->
+        <activity
+            android:name=".CrashActivity"
+            android:process=":crash"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
 
     </application>
 

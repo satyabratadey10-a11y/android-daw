@@ -2,6 +2,7 @@ package com.android.daw
 
 import android.app.Application
 import android.util.Log
+import com.android.daw.diagnostics.CrashLogger
 
 /**
  * DawApplication
@@ -14,21 +15,24 @@ class DawApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        Log.i(TAG, "Initializing Android DAW Application...")
+
+        // 1. Install Global Crash Watchdog & Diagnostics Logging Hub first
+        CrashLogger.install(this)
+        CrashLogger.i(TAG, "Initializing Android DAW Application...")
 
         // Attempt early native library pre-load with graceful fallback
         try {
             System.loadLibrary("daw_audio_engine")
-            Log.i(TAG, "Native audio engine dynamic library (libdaw_audio_engine.so) loaded successfully.")
+            CrashLogger.i(TAG, "Native audio engine dynamic library (libdaw_audio_engine.so) loaded successfully.")
         } catch (unsatisfiedLink: UnsatisfiedLinkError) {
-            Log.w(
+            CrashLogger.w(
                 TAG,
                 "Native library 'daw_audio_engine' not yet present in runtime environment. " +
                     "Fallback simulated audio clock will be active until native engine compilation.",
                 unsatisfiedLink
             )
         } catch (throwable: Throwable) {
-            Log.e(TAG, "Unexpected error loading native library: ${throwable.message}", throwable)
+            CrashLogger.e(TAG, "Unexpected error loading native library: ${throwable.message}", throwable)
         }
     }
 
