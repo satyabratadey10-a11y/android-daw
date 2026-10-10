@@ -49,7 +49,6 @@ import com.android.daw.ui.theme.Daw
 import com.android.daw.ui.theme.DawIcons
 import com.android.daw.ui.theme.DawTheme
 import com.android.daw.ui.theme.Layer
-import com.android.daw.ui.theme.Palette
 
 /**
  * CrashActivity
@@ -180,7 +179,7 @@ fun CrashScreenContent(
                         modifier = Modifier
                             .size(12.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (isCrash) Daw.colors.coral else Daw.colors.mint)
+                            .background(if (isCrash) Daw.colors.coral.base else Daw.colors.mint.base)
                     )
                     Spacer(modifier = Modifier.width(Daw.space.sm))
                     Text(
@@ -231,7 +230,7 @@ fun CrashScreenContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        if (isCrash) Palette.CoralFaint else Palette.MintFaint,
+                        if (isCrash) Daw.colors.coral.faint else Daw.colors.mint.faint,
                         RoundedCornerShape(6.dp)
                     )
                     .padding(horizontal = Daw.space.md, vertical = Daw.space.xs)
@@ -291,7 +290,7 @@ fun CrashScreenContent(
                         .weight(1f)
                         .height(36.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Daw.colors.sky)
+                        .background(Daw.colors.sky.base)
                         .clickable { onCopyToClipboard(currentReport) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -319,7 +318,7 @@ fun CrashScreenContent(
                         .weight(1.2f)
                         .height(36.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Daw.colors.mint)
+                        .background(Daw.colors.mint.base)
                         .clickable { onSaveToDownloads(currentReport) },
                     contentAlignment = Alignment.Center
                 ) {
