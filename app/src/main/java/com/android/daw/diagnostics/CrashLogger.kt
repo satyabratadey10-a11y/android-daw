@@ -160,11 +160,16 @@ object CrashLogger {
         sb.appendLine("             SD STUDIO DAW - DIAGNOSTIC & CRASH REPORT           ")
         sb.appendLine("=================================================================")
         sb.appendLine("Generated At : $timeStr")
-        sb.appendLine("Manufacturer : ${Build.MANUFACTURER}")
-        sb.appendLine("Model        : ${Build.MODEL} (${Build.PRODUCT})")
-        sb.appendLine("Device       : ${Build.DEVICE}")
-        sb.appendLine("Android OS   : ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-        sb.appendLine("Supported ABI: ${Build.SUPPORTED_ABIS.joinToString(", ")}")
+        sb.appendLine("Manufacturer : ${Build.MANUFACTURER ?: "Unknown"}")
+        sb.appendLine("Model        : ${Build.MODEL ?: "Unknown"} (${Build.PRODUCT ?: "Unknown"})")
+        sb.appendLine("Device       : ${Build.DEVICE ?: "Unknown"}")
+        sb.appendLine("Android OS   : ${Build.VERSION.RELEASE ?: "Unknown"} (API ${Build.VERSION.SDK_INT})")
+        val supportedAbis = try {
+            Build.SUPPORTED_ABIS?.filterNotNull()?.joinToString(", ")?.ifEmpty { "Unknown" } ?: "Unknown"
+        } catch (_: Throwable) {
+            "Unknown"
+        }
+        sb.appendLine("Supported ABI: $supportedAbis")
 
         val runtime = Runtime.getRuntime()
         val freeMb = runtime.freeMemory() / (1024 * 1024)
