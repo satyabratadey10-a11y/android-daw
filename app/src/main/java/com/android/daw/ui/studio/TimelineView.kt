@@ -465,10 +465,8 @@ private fun TimelineRuler(
                 )
 
                 val barNumText = "${bar + 1}"
-                drawText(
-                    textMeasurer = textMeasurer,
+                val textLayout = textMeasurer.measure(
                     text = barNumText,
-                    topLeft = Offset(circleCenterX - 4f, circleCenterY - 7f),
                     style = TextStyle(
                         color = inkOnLight,
                         fontSize = 10.sp,
@@ -476,6 +474,16 @@ private fun TimelineRuler(
                         fontWeight = FontWeight.Bold
                     )
                 )
+                val textX = circleCenterX - (textLayout.size.width / 2f)
+                val textY = circleCenterY - (textLayout.size.height / 2f)
+
+                if (textX + textLayout.size.width > 0f && textX < width &&
+                    textY + textLayout.size.height > 0f && textY < height) {
+                    drawText(
+                        textLayoutResult = textLayout,
+                        topLeft = Offset(textX, textY)
+                    )
+                }
             }
 
             // Minor beat ticks between bars

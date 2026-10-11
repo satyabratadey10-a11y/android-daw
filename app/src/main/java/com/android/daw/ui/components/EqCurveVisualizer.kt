@@ -138,12 +138,19 @@ fun EqCurveVisualizer(
                     end = Offset(x, height),
                     strokeWidth = hairlineDp.toPx()
                 )
-                drawText(
-                    textMeasurer = textMeasurer,
+                val layout = textMeasurer.measure(
                     text = label,
-                    topLeft = Offset(x + xsDp.toPx(), height - 16.dp.toPx()),
                     style = TextStyle(color = inkMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                 )
+                val textX = x + xsDp.toPx()
+                val textY = height - 16.dp.toPx()
+                if (textX + layout.size.width > 0f && textX < width &&
+                    textY + layout.size.height > 0f && textY < height) {
+                    drawText(
+                        textLayoutResult = layout,
+                        topLeft = Offset(textX, textY)
+                    )
+                }
             }
 
             val dbGuides = listOf(12f to "+12dB", 0f to " 0dB", -12f to "-12dB")
@@ -155,12 +162,19 @@ fun EqCurveVisualizer(
                     end = Offset(width, y),
                     strokeWidth = if (db == 0f) strokeDp.toPx() else hairlineDp.toPx()
                 )
-                drawText(
-                    textMeasurer = textMeasurer,
+                val layout = textMeasurer.measure(
                     text = label,
-                    topLeft = Offset(xsDp.toPx(), y - 12.dp.toPx()),
                     style = TextStyle(color = inkMuted, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                 )
+                val textX = xsDp.toPx()
+                val textY = y - 12.dp.toPx()
+                if (textX + layout.size.width > 0f && textX < width &&
+                    textY + layout.size.height > 0f && textY < height) {
+                    drawText(
+                        textLayoutResult = layout,
+                        topLeft = Offset(textX, textY)
+                    )
+                }
             }
 
             // 2. Analytical Composite Magnitude Curve Construction
@@ -242,12 +256,19 @@ fun EqCurveVisualizer(
                 )
 
                 // Band index label near node
-                drawText(
-                    textMeasurer = textMeasurer,
+                val layout = textMeasurer.measure(
                     text = "${band.bandIndex + 1}",
-                    topLeft = Offset(nodeX - 3.dp.toPx(), nodeY - 18.dp.toPx()),
                     style = TextStyle(color = inkOnDark, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                 )
+                val textX = nodeX - 3.dp.toPx()
+                val textY = nodeY - 18.dp.toPx()
+                if (textX + layout.size.width > 0f && textX < width &&
+                    textY + layout.size.height > 0f && textY < height) {
+                    drawText(
+                        textLayoutResult = layout,
+                        topLeft = Offset(textX, textY)
+                    )
+                }
             }
         }
     }

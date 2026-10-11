@@ -216,12 +216,19 @@ private fun PianoKeyColumn(modifier: Modifier = Modifier) {
 
             // C label indicator
             if (noteLabels[i].startsWith("C") && !black) {
-                drawText(
-                    textMeasurer = textMeasurer,
+                val layout = textMeasurer.measure(
                     text = "C4",
-                    topLeft = Offset(4f, y + 2f),
                     style = TextStyle(color = inkOnDark, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                 )
+                val textX = 4f
+                val textY = y + 2f
+                if (textX + layout.size.width > 0f && textX < size.width &&
+                    textY + layout.size.height > 0f && textY < size.height) {
+                    drawText(
+                        textLayoutResult = layout,
+                        topLeft = Offset(textX, textY)
+                    )
+                }
             }
         }
     }

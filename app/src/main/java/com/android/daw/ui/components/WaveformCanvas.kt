@@ -91,10 +91,8 @@ fun WaveformCanvas(
 
         // Draw Clip Title Badge
         val titleText = clip.name
-        drawText(
-            textMeasurer = textMeasurer,
+        val titleLayout = textMeasurer.measure(
             text = titleText,
-            topLeft = Offset(max(clipStartPx + 8.dp.toPx(), 8.dp.toPx()), containerPaddingY + 4.dp.toPx()),
             style = TextStyle(
                 color = inkOnDark,
                 fontSize = 10.sp,
@@ -102,6 +100,15 @@ fun WaveformCanvas(
                 fontWeight = FontWeight.SemiBold
             )
         )
+        val titleX = max(clipStartPx + 8.dp.toPx(), 8.dp.toPx())
+        val titleY = containerPaddingY + 4.dp.toPx()
+        if (titleX + titleLayout.size.width > 0f && titleX < canvasWidth &&
+            titleY + titleLayout.size.height > 0f && titleY < canvasHeight) {
+            drawText(
+                textLayoutResult = titleLayout,
+                topLeft = Offset(titleX, titleY)
+            )
+        }
 
         // 3. Select Optimal Decimation Pyramid Level
         val level = pyramid.selectOptimalLevel(pixelsPerSecond)
