@@ -8,6 +8,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.daw.diagnostics.CrashLogger
@@ -21,6 +24,7 @@ import com.android.daw.viewmodel.StudioViewModel
  *
  * Primary entry point activity for Android Digital Audio Workstation.
  * Features:
+ * - Immersive sticky landscape mode hiding system bars (UI-10).
  * - Edge-to-edge Jetpack Compose architecture (enableEdgeToEdge).
  * - High-frequency telemetry decoupling from Compose recomposition phases.
  * - Runtime microphone permission handling for low-latency live audio recording.
@@ -39,6 +43,7 @@ class MainActivity : ComponentActivity() {
 
         try {
             enableEdgeToEdge()
+            hideSystemBars()
         } catch (t: Throwable) {
             CrashLogger.w("MainActivity", "enableEdgeToEdge fallback: ${t.message}")
         }
@@ -82,5 +87,19 @@ class MainActivity : ComponentActivity() {
         ) {
             requestRecordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            hideSystemBars()
+        }
+    }
+
+    private fun hideSystemBars() {
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController.hide(WindowInsetsCompat.Type.systemBars())
     }
 }

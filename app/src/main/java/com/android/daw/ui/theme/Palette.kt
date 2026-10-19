@@ -15,19 +15,19 @@ import androidx.compose.ui.graphics.Color
 object Palette {
     // --- 1. Primaries ---
     // Mint: Master bus, active/selected state, playhead, positive confirm
-    val MintBase = Color(0xFFCDA1FF)
-    val MintDim = Color(0xFF6D5C89)
-    val MintFaint = Color(0xFF423D54)
+    val MintBase = Color(0xFF00E5A3)
+    val MintDim = Color(0xFF167454)
+    val MintFaint = Color(0xFF0D3A2C)
 
     // Coral: Record, instrument channels, destructive/error
-    val CoralBase = Color(0xFFBFCDF5)
-    val CoralDim = Color(0xFF677085)
-    val CoralFaint = Color(0xFF3F4652)
+    val CoralBase = Color(0xFFFF5252)
+    val CoralDim = Color(0xFF8C2E2E)
+    val CoralFaint = Color(0xFF471818)
 
     // Sky: Drum/sampler channels, secondary info, loop/range
     val SkyBase = Color(0xFF4DB8FF)
-    val SkyDim = Color(0xFF346789)
-    val SkyFaint = Color(0xFF284254)
+    val SkyDim = Color(0xFF265D82)
+    val SkyFaint = Color(0xFF153347)
 
     // --- 2. Neutrals ---
     // N0 Workspace: App background, empty timeline

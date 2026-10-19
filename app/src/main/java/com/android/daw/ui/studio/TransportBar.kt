@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.android.daw.ui.components.BpmReadout
 import com.android.daw.ui.components.DawIconButton
 import com.android.daw.ui.theme.Daw
 import com.android.daw.ui.theme.DawIcons
@@ -192,18 +193,11 @@ fun TransportBar(
                     )
                 }
 
-                // BPM: Mono numeric with label "BPM" below (tapping opens BPM Dial)
-                TransportIconCaption(
-                    label = "BPM",
+                // BPM: Mono numeric with label "BPM" below (tapping opens BPM Dial, UI-02)
+                BpmReadout(
+                    bpm = state.bpm,
                     onClick = { onAction(StudioAction.ToggleBpmDial) }
-                ) {
-                    Text(
-                        text = String.format("%.0f", state.bpm),
-                        style = Daw.type.mono,
-                        fontWeight = FontWeight.Bold,
-                        color = Daw.colors.inkOnDark
-                    )
-                }
+                )
 
                 // CTRL: (⋯, opens Project drawer)
                 TransportIconCaption(

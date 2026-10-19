@@ -29,6 +29,7 @@ set(DAW_SOURCES
     audio/AudioEngine.cpp
     audio/WavFile.cpp
     audio/MixdownRenderer.cpp
+    audio/decoder/AudioDecoder.cpp
     dsp/BiquadFilter.cpp
     dsp/DelayEffect.cpp
     dsp/MasterLimiter.cpp
@@ -41,7 +42,9 @@ set(DAW_SOURCES
 # Header include paths
 set(DAW_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/audio
+    ${CMAKE_CURRENT_SOURCE_DIR}/audio/decoder
     ${CMAKE_CURRENT_SOURCE_DIR}/dsp
     ${CMAKE_CURRENT_SOURCE_DIR}/backend
     ${CMAKE_CURRENT_SOURCE_DIR}/jni

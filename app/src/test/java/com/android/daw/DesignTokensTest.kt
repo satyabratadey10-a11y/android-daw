@@ -77,21 +77,21 @@ class DesignTokensTest {
 
     @Test
     fun testPalettePrimaryHuesIntegrity() {
-        // Mint: #CDA1FF (Red = 0xCD, Green = 0xA1, Blue = 0xFF)
+        // Mint: #00E5A3 (Red = 0x00, Green = 0xE5, Blue = 0xA3)
         val mintR = (Palette.MintBase.red * 255f).roundToInt()
         val mintG = (Palette.MintBase.green * 255f).roundToInt()
         val mintB = (Palette.MintBase.blue * 255f).roundToInt()
-        assertEquals("Mint Red must be 0xCD (205)", 0xCD, mintR)
-        assertEquals("Mint Green must be 0xA1 (161)", 0xA1, mintG)
-        assertEquals("Mint Blue must be 0xFF (255)", 0xFF, mintB)
+        assertEquals("Mint Red must be 0x00 (0)", 0x00, mintR)
+        assertEquals("Mint Green must be 0xE5 (229)", 0xE5, mintG)
+        assertEquals("Mint Blue must be 0xA3 (163)", 0xA3, mintB)
 
-        // Coral: #BFCDF5 (Red = 0xBF, Green = 0xCD, Blue = 0xF5)
+        // Coral: #FF5252 (Red = 0xFF, Green = 0x52, Blue = 0x52)
         val coralR = (Palette.CoralBase.red * 255f).roundToInt()
         val coralG = (Palette.CoralBase.green * 255f).roundToInt()
         val coralB = (Palette.CoralBase.blue * 255f).roundToInt()
-        assertEquals("Coral Red must be 0xBF (191)", 0xBF, coralR)
-        assertEquals("Coral Green must be 0xCD (205)", 0xCD, coralG)
-        assertEquals("Coral Blue must be 0xF5 (245)", 0xF5, coralB)
+        assertEquals("Coral Red must be 0xFF (255)", 0xFF, coralR)
+        assertEquals("Coral Green must be 0x52 (82)", 0x52, coralG)
+        assertEquals("Coral Blue must be 0x52 (82)", 0x52, coralB)
 
         // Sky: #4DB8FF (Red = 0x4D, Green = 0xB8, Blue = 0xFF)
         val skyR = (Palette.SkyBase.red * 255f).roundToInt()

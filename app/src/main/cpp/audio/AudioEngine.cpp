@@ -1,5 +1,6 @@
 #include "AudioEngine.h"
 #include "MixdownRenderer.h"
+#include "decoder/AudioDecoder.h"
 #include <algorithm>
 #include <cmath>
 
@@ -200,12 +201,42 @@ bool AudioEngine::loadClip(int track_id, int clip_id, const std::string& wav_fil
     if (!track) return false;
 
     AudioClip clip(clip_id, "Clip", start_offset_frames);
-    if (!clip.loadFromWav(wav_file_path)) {
-        return false;
+    DecodedAudio decoded = AudioDecoder::decodeFile(wav_file_path, static_cast<uint32_t>(sample_rate_));
+    if (decoded.success && !decoded.audio_left.empty()) {
+        clip.setAudioData(std::move(decoded.audio_left), std::move(decoded.audio_right));
+    } else {
+        if (!clip.loadFromWav(wav_file_path)) {
+            return false;
+        }
     }
 
     track->addClip(std::move(clip));
     return true;
+}
+
+bool AudioEngine::loadClipData(int track_id, int clip_id, std::vector<float> left, std::vector<float> right, int64_t start_offset_frames) {
+    auto* track = getTrack(track_id);
+    if (!track) return false;
+
+    AudioClip clip(clip_id, "Clip", start_offset_frames);
+    clip.setAudioData(std::move(left), std::move(right));
+    track->addClip(std::move(clip));
+    return true;
+}
+
+bool AudioEngine::moveClip(int track_id, int clip_id, int64_t new_start_frame) {
+    auto* track = getTrack(track_id);
+    if (!track) return false;
+    auto* clip = track->getClip(clip_id);
+    if (!clip) return false;
+    clip->setStartFrame(new_start_frame);
+    return true;
+}
+
+bool AudioEngine::removeClip(int track_id, int clip_id) {
+    auto* track = getTrack(track_id);
+    if (!track) return false;
+    return track->removeClip(clip_id);
 }
 
 bool AudioEngine::startRecording(int track_id, const std::string& destination_wav_path) {

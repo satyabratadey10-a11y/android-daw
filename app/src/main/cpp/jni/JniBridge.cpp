@@ -1,5 +1,6 @@
 #include "JniBridge.h"
 #include "../audio/AudioEngine.h"
+#include "../audio/decoder/AudioDecoder.h"
 #include "../backend/AAudioStreamManager.h"
 #include <android/log.h>
 #include <memory>
@@ -226,6 +227,82 @@ static jboolean jni_nativeRenderMixdown(JNIEnv* env, jobject /*thiz*/, jstring o
     return success ? JNI_TRUE : JNI_FALSE;
 }
 
+static jobject jni_nativeDecodeAudioFile(JNIEnv* env, jobject /*thiz*/, jstring filePath, jint targetSampleRate) {
+    const std::string path = jstringToString(env, filePath);
+    daw::audio::DecodedAudio decoded = daw::audio::AudioDecoder::decodeFile(path, static_cast<uint32_t>(targetSampleRate));
+
+    jclass cls = env->FindClass("com/android/daw/domain/model/DecodedAudioResult");
+    if (!cls) return nullptr;
+
+    jmethodID ctor = env->GetMethodID(cls, "<init>", "(ZLjava/lang/String;IIJ[F[F[F[F[F[F[F[F[F)V");
+    if (!ctor) return nullptr;
+
+    jstring errStr = env->NewStringUTF(decoded.error_message.c_str());
+
+    auto makeFloatArray = [&](const std::vector<float>& vec) -> jfloatArray {
+        jfloatArray arr = env->NewFloatArray(static_cast<jsize>(vec.size()));
+        if (arr && !vec.empty()) {
+            env->SetFloatArrayRegion(arr, 0, static_cast<jsize>(vec.size()), vec.data());
+        }
+        return arr;
+    };
+
+    jfloatArray p64min = nullptr, p64max = nullptr, p64rms = nullptr;
+    jfloatArray p512min = nullptr, p512max = nullptr, p512rms = nullptr;
+    jfloatArray p4096min = nullptr, p4096max = nullptr, p4096rms = nullptr;
+
+    if (decoded.success && decoded.pyramid_levels.size() >= 3) {
+        p64min = makeFloatArray(decoded.pyramid_levels[0].min_peaks);
+        p64max = makeFloatArray(decoded.pyramid_levels[0].max_peaks);
+        p64rms = makeFloatArray(decoded.pyramid_levels[0].rms_peaks);
+
+        p512min = makeFloatArray(decoded.pyramid_levels[1].min_peaks);
+        p512max = makeFloatArray(decoded.pyramid_levels[1].max_peaks);
+        p512rms = makeFloatArray(decoded.pyramid_levels[1].rms_peaks);
+
+        p4096min = makeFloatArray(decoded.pyramid_levels[2].min_peaks);
+        p4096max = makeFloatArray(decoded.pyramid_levels[2].max_peaks);
+        p4096rms = makeFloatArray(decoded.pyramid_levels[2].rms_peaks);
+    } else {
+        p64min = makeFloatArray({}); p64max = makeFloatArray({}); p64rms = makeFloatArray({});
+        p512min = makeFloatArray({}); p512max = makeFloatArray({}); p512rms = makeFloatArray({});
+        p4096min = makeFloatArray({}); p4096max = makeFloatArray({}); p4096rms = makeFloatArray({});
+    }
+
+    jobject resultObj = env->NewObject(
+        cls, ctor,
+        decoded.success ? JNI_TRUE : JNI_FALSE,
+        errStr,
+        static_cast<jint>(decoded.sample_rate),
+        static_cast<jint>(decoded.channels),
+        static_cast<jlong>(decoded.total_frames),
+        p64min, p64max, p64rms,
+        p512min, p512max, p512rms,
+        p4096min, p4096max, p4096rms
+    );
+
+    return resultObj;
+}
+
+static jboolean jni_nativeMoveClip(JNIEnv* /*env*/, jobject /*thiz*/, jint trackId, jint clipId, jlong newStartFrame) {
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    if (!g_audio_engine) return JNI_FALSE;
+    return g_audio_engine->moveClip(trackId, clipId, static_cast<int64_t>(newStartFrame)) ? JNI_TRUE : JNI_FALSE;
+}
+
+static jboolean jni_nativeRemoveClip(JNIEnv* /*env*/, jobject /*thiz*/, jint trackId, jint clipId) {
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    if (!g_audio_engine) return JNI_FALSE;
+    return g_audio_engine->removeClip(trackId, clipId) ? JNI_TRUE : JNI_FALSE;
+}
+
+static jfloat jni_nativeGetCpuUsage(JNIEnv* /*env*/, jobject /*thiz*/) {
+    if (g_audio_engine) {
+        return g_audio_engine->getCpuUsage();
+    }
+    return 0.0f;
+}
+
 // =============================================================================
 // Native Method Registration Table
 // =============================================================================
@@ -252,9 +329,13 @@ static const JNINativeMethod g_native_methods[] = {
     {"nativeGetPlaybackPositionFrames", "()J", reinterpret_cast<void*>(jni_nativeGetPlaybackPositionFrames)},
     {"nativeGetMeteringData", "(Ljava/nio/ByteBuffer;I)V", reinterpret_cast<void*>(jni_nativeGetMeteringData)},
     {"nativeLoadClip", "(IILjava/lang/String;J)Z", reinterpret_cast<void*>(jni_nativeLoadClip)},
+    {"nativeMoveClip", "(IIJ)Z", reinterpret_cast<void*>(jni_nativeMoveClip)},
+    {"nativeRemoveClip", "(II)Z", reinterpret_cast<void*>(jni_nativeRemoveClip)},
     {"nativeStartRecording", "(ILjava/lang/String;)Z", reinterpret_cast<void*>(jni_nativeStartRecording)},
     {"nativeStopRecording", "(I)V", reinterpret_cast<void*>(jni_nativeStopRecording)},
-    {"nativeRenderMixdown", "(Ljava/lang/String;IJ)Z", reinterpret_cast<void*>(jni_nativeRenderMixdown)}
+    {"nativeRenderMixdown", "(Ljava/lang/String;IJ)Z", reinterpret_cast<void*>(jni_nativeRenderMixdown)},
+    {"nativeDecodeAudioFile", "(Ljava/lang/String;I)Lcom/android/daw/domain/model/DecodedAudioResult;", reinterpret_cast<void*>(jni_nativeDecodeAudioFile)},
+    {"nativeGetCpuUsage", "()F", reinterpret_cast<void*>(jni_nativeGetCpuUsage)}
 };
 
 static const char* const kNativeClassName = "com/android/daw/bridge/NativeAudioEngine";
@@ -410,8 +491,20 @@ JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeL
     return jni_nativeLoadClip(env, thiz, trackId, clipId, wavFilePath, startOffsetFrames);
 }
 
-JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeRemoveClip(JNIEnv* /*env*/, jobject /*thiz*/, jint /*trackId*/, jint /*clipId*/) {
-    return JNI_TRUE;
+JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeMoveClip(JNIEnv* env, jobject thiz, jint trackId, jint clipId, jlong newStartFrame) {
+    return jni_nativeMoveClip(env, thiz, trackId, clipId, newStartFrame);
+}
+
+JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeRemoveClip(JNIEnv* env, jobject thiz, jint trackId, jint clipId) {
+    return jni_nativeRemoveClip(env, thiz, trackId, clipId);
+}
+
+JNIEXPORT jobject JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeDecodeAudioFile(JNIEnv* env, jobject thiz, jstring filePath, jint targetSampleRate) {
+    return jni_nativeDecodeAudioFile(env, thiz, filePath, targetSampleRate);
+}
+
+JNIEXPORT jfloat JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeGetCpuUsage(JNIEnv* env, jobject thiz) {
+    return jni_nativeGetCpuUsage(env, thiz);
 }
 
 JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeStartRecording(JNIEnv* env, jobject thiz, jint trackId, jstring destinationWavPath) {

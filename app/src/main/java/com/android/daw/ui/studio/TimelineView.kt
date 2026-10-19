@@ -36,12 +36,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -218,6 +220,8 @@ fun TimelineView(
                                             pixelsPerSecond = zoom,
                                             scrollOffsetPx = scrollOffset,
                                             trackColor = Daw.colors.trackColor(index),
+                                            isMuted = track.isMuted,
+                                            originInsetPx = TimelineLayoutMath.ORIGIN_INSET_DP.dp.toPx(),
                                             modifier = Modifier.fillMaxSize()
                                         )
 
@@ -264,15 +268,21 @@ fun TimelineView(
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val frame = playheadProvider()
-                        val timeSec = frame.toFloat() / sampleRate
-                        val playheadX = (timeSec * zoom) - scrollOffset
+                        val originInsetPx = TimelineLayoutMath.ORIGIN_INSET_DP.dp.toPx()
+                        val playheadX = TimelineLayoutMath.calculatePlayheadX(
+                            frame = frame,
+                            sampleRate = sampleRate,
+                            zoomPixelsPerSecond = zoom,
+                            scrollOffsetPx = scrollOffset,
+                            originInsetPx = originInsetPx
+                        )
 
                         if (playheadX in 0f..size.width) {
                             val strokeWidthPx = playheadStrokeDp.toPx()
 
-                            // Playhead comet fading trail (24dp Mint fading strip proportional to playback)
+                            // Playhead comet fading trail (max 12dp Mint strip per UI-05)
                             if (state.isPlaying) {
-                                val cometWidth = 24.dp.toPx()
+                                val cometWidth = 12.dp.toPx()
                                 val cometLeft = max(0f, playheadX - cometWidth)
                                 val cometBrush = Brush.horizontalGradient(
                                     colors = listOf(mintColor.copy(alpha = 0f), mintColor.copy(alpha = 0.35f)),
@@ -387,13 +397,33 @@ private fun TimelineRuler(
     val skyFaint = Daw.colors.sky.faint
     val skyBase = Daw.colors.sky.base
 
+    val originInsetPx = TimelineLayoutMath.ORIGIN_INSET_DP.dp.toPx()
+    val circleRadius = TimelineLayoutMath.BUBBLE_RADIUS_DP.dp.toPx()
+
+    val bubbleTextStyle = TextStyle(
+        color = inkOnLight,
+        fontSize = TimelineLayoutMath.BUBBLE_TEXT_SIZE_SP.sp,
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both
+        )
+    )
+
     Canvas(
         modifier = modifier
             .clipToBounds()
             .pointerInput(sampleRate, zoom, scrollOffset) {
                 detectTapGestures { offset ->
-                    val timeSec = (offset.x + scrollOffset) / zoom
-                    val targetFrame = (timeSec * sampleRate).toLong()
+                    val targetFrame = TimelineLayoutMath.calculateFrameFromTap(
+                        tapX = offset.x,
+                        scrollOffsetPx = scrollOffset,
+                        originInsetPx = originInsetPx,
+                        zoomPixelsPerSecond = zoom,
+                        sampleRate = sampleRate
+                    )
                     onSeek(targetFrame)
                 }
             }
@@ -407,15 +437,15 @@ private fun TimelineRuler(
 
         if (pixelsPerBar <= 1f) return@Canvas
 
-        val startBar = (scrollOffset / pixelsPerBar).toInt()
-        val endBar = ((scrollOffset + width) / pixelsPerBar).toInt() + 2
+        val startBar = max(0, ((scrollOffset - originInsetPx) / pixelsPerBar).toInt())
+        val endBar = ((scrollOffset + width - originInsetPx) / pixelsPerBar).toInt() + 2
 
         // 1. Draw Loop Region Banner if enabled (Sky Faint per Section 5.3)
         if (isLooping) {
             val loopStartSec = loopStartFrame.toFloat() / sampleRate
             val loopEndSec = loopEndFrame.toFloat() / sampleRate
-            val loopStartX = (loopStartSec * zoom) - scrollOffset
-            val loopEndX = (loopEndSec * zoom) - scrollOffset
+            val loopStartX = originInsetPx + (loopStartSec * zoom) - scrollOffset
+            val loopEndX = originInsetPx + (loopEndSec * zoom) - scrollOffset
             val loopWidth = loopEndX - loopStartX
 
             if (loopWidth > 0f) {
@@ -440,10 +470,8 @@ private fun TimelineRuler(
         }
 
         // 2. Draw Bar Numbers inside 24dp circles (N4) and Beat Ticks
-        val circleRadius = 12.dp.toPx()
-
         for (bar in startBar..endBar) {
-            val barX = (bar * pixelsPerBar) - scrollOffset
+            val barX = TimelineLayoutMath.calculateBarX(bar, pixelsPerBar, scrollOffset, originInsetPx)
 
             // Major bar line
             drawLine(
@@ -453,8 +481,8 @@ private fun TimelineRuler(
                 strokeWidth = 1.5f
             )
 
-            // Bar number in 24dp N4 circle
-            val circleCenterX = barX + circleRadius + 4f
+            // Bar number bubble CENTERED on bar line (circleCenterX == barX per UI-01)
+            val circleCenterX = barX
             val circleCenterY = height / 2f
 
             if (circleCenterX - circleRadius < width && circleCenterX + circleRadius > 0f) {
@@ -467,12 +495,7 @@ private fun TimelineRuler(
                 val barNumText = "${bar + 1}"
                 val textLayout = textMeasurer.measure(
                     text = barNumText,
-                    style = TextStyle(
-                        color = inkOnLight,
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold
-                    )
+                    style = bubbleTextStyle
                 )
                 val textX = circleCenterX - (textLayout.size.width / 2f)
                 val textY = circleCenterY - (textLayout.size.height / 2f)

@@ -83,17 +83,29 @@ void AudioClip::renderBlock(int64_t timeline_frame, size_t num_frames,
 
     const int64_t max_src_frame = static_cast<int64_t>(source_frames_);
     const float clip_gain = gain_;
+    const int64_t fade_frames = std::min<int64_t>(240, duration_frames_ / 2); // 5ms fade at 48kHz
 
     for (int64_t t = overlap_start; t < overlap_end; ++t) {
         const size_t out_idx = static_cast<size_t>(t - window_start);
         const int64_t src_idx = (t - clip_start) + source_offset_frames_;
 
         if (src_idx >= 0 && src_idx < max_src_frame) {
+            float fade = 1.0f;
+            const int64_t clip_rel_pos = t - clip_start;
+            if (fade_frames > 0) {
+                if (clip_rel_pos < fade_frames) {
+                    fade = static_cast<float>(clip_rel_pos) / static_cast<float>(fade_frames);
+                } else if (clip_rel_pos >= (duration_frames_ - fade_frames)) {
+                    fade = static_cast<float>(duration_frames_ - 1 - clip_rel_pos) / static_cast<float>(fade_frames);
+                }
+            }
+
+            const float sample_gain = clip_gain * fade;
             if (out_left && !audio_left_.empty()) {
-                out_left[out_idx] += audio_left_[src_idx] * clip_gain;
+                out_left[out_idx] += audio_left_[src_idx] * sample_gain;
             }
             if (out_right && !audio_right_.empty()) {
-                out_right[out_idx] += audio_right_[src_idx] * clip_gain;
+                out_right[out_idx] += audio_right_[src_idx] * sample_gain;
             }
         }
     }

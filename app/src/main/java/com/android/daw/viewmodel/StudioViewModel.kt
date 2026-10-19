@@ -1,9 +1,12 @@
 package com.android.daw.viewmodel
 
 import android.net.Uri
+import android.os.Environment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.daw.DawApplication
 import com.android.daw.bridge.NativeAudioEngine
+import com.android.daw.domain.model.TelemetryData
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.exp
@@ -112,6 +116,9 @@ class StudioViewModel(
                 is StudioAction.SelectClip -> handleSelectClip(action.clipId)
                 is StudioAction.ExecuteClipAction -> handleExecuteClipAction(action.clipId, action.action)
                 is StudioAction.SetClipMenuOpen -> handleSetClipMenuOpen(action.isOpen)
+                is StudioAction.MoveClip -> handleMoveClip(action.clipId, action.newStartFrame)
+                is StudioAction.SplitClipAtPlayhead -> handleSplitClipAtPlayhead(action.clipId)
+                is StudioAction.TrimClip -> handleTrimClip(action.clipId, action.newStartFrame, action.newDurationFrames)
 
                 // --- DSP Mutations ---
                 is StudioAction.UpdateEq -> handleUpdateEq(
@@ -205,24 +212,13 @@ class StudioViewModel(
     private suspend fun handleAddTrack(name: String) = withContext(defaultDispatcher) {
         val currentTracks = _uiState.value.tracks
         val nextId = (currentTracks.maxOfOrNull { it.trackId } ?: 0) + 1
-        val colorHex = TRACK_PALETTE_HEX[nextId % TRACK_PALETTE_HEX.size]
-
-        val sampleRate = _uiState.value.sampleRate
-        val syntheticPyramid = generateSyntheticPyramid(sampleRate, 44100L * 16L, (nextId * 110f) % 440f + 110f)
-        val initialClip = AudioClipUiModel(
-            clipId = nextId * 10,
-            trackId = nextId,
-            name = "$name Clip",
-            startFrame = 0L,
-            durationFrames = 44100L * 16L,
-            waveformPeakData = syntheticPyramid
-        )
+        val colorHex = TRACK_PALETTE_HEX[(nextId - 1) % TRACK_PALETTE_HEX.size]
 
         val newTrack = TrackUiModel(
             trackId = nextId,
             name = "$name $nextId",
             colorHex = colorHex,
-            clips = listOf(initialClip)
+            clips = emptyList()
         )
 
         withNativeEngine { it.addTrack(nextId) }
@@ -239,15 +235,19 @@ class StudioViewModel(
     private suspend fun handleRemoveTrack(trackId: Int) = withContext(defaultDispatcher) {
         withNativeEngine { it.removeTrack(trackId) }
         _uiState.update { state ->
+            val trackToRemove = state.tracks.find { it.trackId == trackId }
+            val removedClipIds = trackToRemove?.clips?.map { it.clipId }?.toSet() ?: emptySet()
             val updatedTracks = state.tracks.filterNot { it.trackId == trackId }
             val newSelected = if (state.selectedTrackId == trackId) {
                 updatedTracks.firstOrNull()?.trackId
             } else {
                 state.selectedTrackId
             }
+            val newSelectedClip = if (state.selectedClipId in removedClipIds) null else state.selectedClipId
             state.copy(
                 tracks = updatedTracks,
                 selectedTrackId = newSelected,
+                selectedClipId = newSelectedClip,
                 statusMessage = "Removed track #$trackId"
             )
         }
@@ -401,9 +401,16 @@ class StudioViewModel(
     private fun handleExecuteClipAction(clipId: Int, action: String) {
         when (action.uppercase()) {
             "DELETE" -> {
-                _uiState.update { state ->
-                    state.copy(
-                        tracks = state.tracks.map { track ->
+                val state = _uiState.value
+                val foundTrack = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
+                if (foundTrack != null) {
+                    viewModelScope.launch(defaultDispatcher) {
+                        withNativeEngine { it.removeClip(foundTrack.trackId, clipId) }
+                    }
+                }
+                _uiState.update { s ->
+                    s.copy(
+                        tracks = s.tracks.map { track ->
                             track.copy(clips = track.clips.filter { it.clipId != clipId })
                         },
                         selectedClipId = null,
@@ -470,6 +477,79 @@ class StudioViewModel(
             }
             else -> {
                 _uiState.update { it.copy(statusMessage = "Action $action on clip #$clipId", isClipMenuOpen = false) }
+            }
+        }
+    }
+
+    private suspend fun handleMoveClip(clipId: Int, newStartFrame: Long) = withContext(defaultDispatcher) {
+        val targetFrame = maxOf(0L, newStartFrame)
+        val state = _uiState.value
+        val track = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
+        if (track != null) {
+            withNativeEngine { it.moveClip(track.trackId, clipId, targetFrame) }
+            _uiState.update { s ->
+                s.copy(
+                    tracks = s.tracks.map { tr ->
+                        if (tr.trackId == track.trackId) {
+                            tr.copy(
+                                clips = tr.clips.map { c ->
+                                    if (c.clipId == clipId) c.copy(startFrame = targetFrame) else c
+                                }
+                            )
+                        } else tr
+                    }
+                )
+            }
+        }
+    }
+
+    private suspend fun handleSplitClipAtPlayhead(clipId: Int) = withContext(defaultDispatcher) {
+        val playhead = _playheadFrame.value
+        val state = _uiState.value
+        val track = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
+        val clip = track?.clips?.find { it.clipId == clipId }
+        if (track != null && clip != null && playhead > clip.startFrame && playhead < (clip.startFrame + clip.durationFrames)) {
+            val dur1 = playhead - clip.startFrame
+            val dur2 = clip.durationFrames - dur1
+            val clip1 = clip.copy(durationFrames = dur1)
+            val clip2Id = (state.tracks.flatMap { it.clips }.maxOfOrNull { it.clipId } ?: 0) + 1
+            val clip2 = clip.copy(
+                clipId = clip2Id,
+                name = "${clip.name}_2",
+                startFrame = playhead,
+                durationFrames = dur2
+            )
+            _uiState.update { s ->
+                s.copy(
+                    tracks = s.tracks.map { tr ->
+                        if (tr.trackId == track.trackId) {
+                            tr.copy(clips = tr.clips.filter { it.clipId != clipId } + listOf(clip1, clip2))
+                        } else tr
+                    },
+                    selectedClipId = clip1.clipId
+                )
+            }
+        }
+    }
+
+    private suspend fun handleTrimClip(clipId: Int, newStartFrame: Long, newDurationFrames: Long) = withContext(defaultDispatcher) {
+        if (newDurationFrames <= 0) return@withContext
+        val targetFrame = maxOf(0L, newStartFrame)
+        val state = _uiState.value
+        val track = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
+        if (track != null) {
+            _uiState.update { s ->
+                s.copy(
+                    tracks = s.tracks.map { tr ->
+                        if (tr.trackId == track.trackId) {
+                            tr.copy(
+                                clips = tr.clips.map { c ->
+                                    if (c.clipId == clipId) c.copy(startFrame = targetFrame, durationFrames = newDurationFrames) else c
+                                }
+                            )
+                        } else tr
+                    }
+                )
             }
         }
     }
@@ -661,33 +741,68 @@ class StudioViewModel(
     }
 
     private suspend fun handleImportAudio(trackId: Int, uri: Uri) = withContext(ioDispatcher) {
-        _uiState.update { it.copy(statusMessage = "Importing audio from $uri...") }
-        delay(300)
+        _uiState.update { it.copy(statusMessage = "Importing audio: $uri...") }
+
+        val app = try { DawApplication.getInstance() } catch (_: Throwable) { null }
+        var localPath: String? = null
+        val clipName = uri.lastPathSegment?.substringAfterLast('/') ?: "Imported Clip"
+
+        try {
+            if (uri.scheme == "file") {
+                localPath = uri.path
+            } else if (app != null && uri.scheme == "content") {
+                val importsDir = File(app.cacheDir, "imports").apply { mkdirs() }
+                val targetFile = File(importsDir, "${System.currentTimeMillis()}_${clipName.replace('/', '_')}")
+                app.contentResolver.openInputStream(uri)?.use { input ->
+                    targetFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                localPath = targetFile.absolutePath
+            } else {
+                localPath = uri.path
+            }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(statusMessage = "Failed to access audio file: ${e.message}") }
+            return@withContext
+        }
+
+        if (localPath == null || !File(localPath).exists()) {
+            _uiState.update { it.copy(statusMessage = "Audio file not found: $localPath") }
+            return@withContext
+        }
 
         val sampleRate = _uiState.value.sampleRate
-        val durationFrames = 44100L * 20L
-        val pyramid = generateSyntheticPyramid(sampleRate, durationFrames, 220f)
-        val clipId = (System.currentTimeMillis() % 10000).toInt()
-        val clipName = uri.lastPathSegment ?: "Imported Clip"
+        val decoded = audioEngine.decodeAudioFile(localPath, sampleRate)
+        if (decoded != null && decoded.success && decoded.totalFrames > 0L) {
+            val clipId = (System.currentTimeMillis() % 100000).toInt()
+            val pyramid = decoded.toPyramid()
+            audioEngine.loadClip(trackId, clipId, localPath, 0L)
 
-        val newClip = AudioClipUiModel(
-            clipId = clipId,
-            trackId = trackId,
-            name = clipName,
-            startFrame = 0L,
-            durationFrames = durationFrames,
-            waveformPeakData = pyramid
-        )
-
-        _uiState.update { state ->
-            state.copy(
-                tracks = state.tracks.map { track ->
-                    if (track.trackId == trackId) {
-                        track.copy(clips = track.clips + newClip)
-                    } else track
-                },
-                statusMessage = "Imported audio successfully: $clipName"
+            val newClip = AudioClipUiModel(
+                clipId = clipId,
+                trackId = trackId,
+                name = clipName,
+                startFrame = 0L,
+                durationFrames = decoded.totalFrames,
+                waveformPeakData = pyramid
             )
+
+            _uiState.update { state ->
+                val newTotalFrames = maxOf(state.totalFrames, newClip.startFrame + newClip.durationFrames)
+                state.copy(
+                    totalFrames = newTotalFrames,
+                    tracks = state.tracks.map { track ->
+                        if (track.trackId == trackId) {
+                            track.copy(clips = track.clips + newClip)
+                        } else track
+                    },
+                    statusMessage = "Imported audio successfully: $clipName (${decoded.totalFrames} frames)"
+                )
+            }
+        } else {
+            val errMsg = decoded?.errorMessage ?: "Native audio decoding failed."
+            _uiState.update { it.copy(statusMessage = "Import failed: $errMsg") }
         }
     }
 
@@ -697,19 +812,45 @@ class StudioViewModel(
 
         exportJob = viewModelScope.launch(ioDispatcher) {
             try {
-                for (p in 1..100) {
-                    delay(20)
-                    _uiState.update { it.copy(exportProgressPercent = p) }
-                }
-                _uiState.update {
-                    it.copy(
-                        isExporting = false,
-                        exportProgressPercent = 100,
-                        statusMessage = "Export complete: Mixdown_$bitDepth-bit.wav saved to Downloads."
-                    )
+                val app = try { DawApplication.getInstance() } catch (_: Throwable) { null }
+                val exportDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    ?: app?.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
+                    ?: File("/sdcard/Download")
+                if (!exportDir.exists()) exportDir.mkdirs()
+
+                val fileName = "SD_Studio_Mixdown_${System.currentTimeMillis()}_${bitDepth}bit.wav"
+                val outputFile = File(exportDir, fileName)
+
+                val state = _uiState.value
+                val maxClipEnd = state.tracks.flatMap { it.clips }.maxOfOrNull { it.startFrame + it.durationFrames } ?: (state.sampleRate * 4L)
+                val totalFrames = maxOf(state.totalFrames, maxClipEnd)
+
+                _uiState.update { it.copy(exportProgressPercent = 25) }
+
+                val success = audioEngine.renderOffline(outputFile.absolutePath, bitDepth, totalFrames)
+
+                _uiState.update { it.copy(exportProgressPercent = 85) }
+                delay(100)
+
+                if (success && outputFile.exists()) {
+                    _uiState.update {
+                        it.copy(
+                            isExporting = false,
+                            exportProgressPercent = 100,
+                            statusMessage = "Export complete: ${outputFile.name} saved to Downloads."
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isExporting = false,
+                            exportProgressPercent = 0,
+                            statusMessage = "Export failed or cancelled by audio engine."
+                        )
+                    }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isExporting = false, statusMessage = "Export cancelled or failed.") }
+                _uiState.update { it.copy(isExporting = false, statusMessage = "Export failed: ${e.message}") }
             }
         }
     }
@@ -730,8 +871,8 @@ class StudioViewModel(
     private fun startTelemetryLoop() {
         telemetryJob?.cancel()
         telemetryJob = viewModelScope.launch(defaultDispatcher) {
+            val reusableData = TelemetryData()
             var lastTimestamp = System.currentTimeMillis()
-            val framesPerTick = 735L // ~44100 / 60fps = 735 frames per tick
 
             while (isActive) {
                 try {
@@ -742,33 +883,28 @@ class StudioViewModel(
                     val state = _uiState.value
                     val isPlaying = state.isPlaying || state.isRecording
 
-                    if (isPlaying) {
-                        var current = _playheadFrame.value + framesPerTick
-                        if (state.isLooping && current >= state.loopEndFrame) {
-                            current = state.loopStartFrame
-                        } else if (current >= state.totalFrames) {
-                            current = 0L
-                        }
-                        _playheadFrame.value = current
+                    // 1. Hardware clock Playhead position from native engine
+                    val nativePlayhead = audioEngine.getPlaybackPositionFrames()
+                    if (nativePlayhead > 0L || isPlaying) {
+                        _playheadFrame.value = nativePlayhead
                     }
 
-                    // Compute IEC 60268-10 Ballistics for each track & master
+                    // 2. Poll atomic native audio telemetry
+                    val polled = audioEngine.pollTelemetry(reusableData)
+
+                    // 3. Update meters with IEC ballistics
                     val updatedMeters = mutableMapOf<Int, StereoLevel>()
                     var masterMaxPeak = 0f
                     var masterMaxRms = 0f
 
-                    state.tracks.forEach { track ->
+                    state.tracks.forEachIndexed { index, track ->
                         val ballistics = meterBallisticsMap.getOrPut(track.trackId) { BallisticsState() }
-
-                        val rawAmplitude = if (isPlaying && !track.isMuted) {
-                            val phase = (_playheadFrame.value.toFloat() / state.sampleRate) * (track.trackId * 2f + 1f)
-                            val mod = (0.5f + 0.5f * sin(phase * 2.0 * PI)).toFloat()
-                            (mod * track.volumeLinear * 0.75f).coerceIn(0f, 1.2f)
+                        val rawPeak = if (polled && index < reusableData.trackPeaks.size) {
+                            reusableData.trackPeaks[index]
                         } else {
-                            0.0f
+                            0f
                         }
-
-                        val level = ballistics.update(rawAmplitude, now, deltaSec)
+                        val level = ballistics.update(rawPeak, now, deltaSec)
                         updatedMeters[track.trackId] = level
                         masterMaxPeak = maxOf(masterMaxPeak, level.peakMax)
                         masterMaxRms = maxOf(masterMaxRms, level.rmsMax)
@@ -776,11 +912,25 @@ class StudioViewModel(
 
                     // Master Bus Ballistics
                     val masterBallistics = meterBallisticsMap.getOrPut(-1) { BallisticsState() }
-                    masterBallistics.update(masterMaxPeak * state.masterVolumeLinear, now, deltaSec)
+                    val rawMasterPeak = if (polled) maxOf(reusableData.masterPeakLeft, reusableData.masterPeakRight) else masterMaxPeak
+                    val masterLevel = masterBallistics.update(rawMasterPeak * state.masterVolumeLinear, now, deltaSec)
 
                     _telemetryLevels.value = updatedMeters
+
+                    // 4. Update CPU and RAM in uiState
+                    val cpuPct = audioEngine.getCpuUsage()
+                    val pssKb = android.os.Debug.getPss()
+                    val ramMb = if (pssKb > 0) (pssKb / 1024L).toInt() else 34
+
+                    _uiState.update { s ->
+                        s.copy(
+                            cpuUsagePercent = cpuPct,
+                            ramUsageMb = ramMb,
+                            masterLevels = masterLevel
+                        )
+                    }
                 } catch (_: Throwable) {
-                    // Safeguard against arithmetic or state concurrency exceptions
+                    // Concurrency safeguard
                 }
 
                 delay(16) // ~60 Hz update rate
@@ -810,104 +960,27 @@ class StudioViewModel(
         private const val TAG = "StudioViewModel"
 
         private val TRACK_PALETTE_HEX = listOf(
-            0xFF00E5FF, // Cyan
-            0xFFFF4081, // Pink
-            0xFFFFD740, // Amber
-            0xFF7C4DFF, // Purple
-            0xFF69F0AE, // Mint
-            0xFFFF6E40, // Orange
-            0xFF40C4FF  // Sky Blue
+            0xFFFF5252L, // Coral
+            0xFF4DB8FFL, // Sky
+            0xFF00E5A3L  // Mint
         )
 
         /**
-         * Initialize professional default studio session with 4 tracks
+         * Initialize clean studio session starting with an empty project per Ground Rule 0.
          */
         fun createInitialStudioState(): StudioUiState {
-            val sampleRate = 44100
-            val clipDurationFrames = sampleRate * 16L // 16 seconds (8 bars at 120 BPM)
-
-            val track1 = TrackUiModel(
-                trackId = 1,
-                name = "Vocal Lead",
-                colorHex = 0xFF00E5FF,
-                volumeLinear = 1.0f,
-                pan = 0.0f,
-                clips = listOf(
-                    AudioClipUiModel(101, 1, "Vocal_Take_01", 0L, clipDurationFrames, generateSyntheticPyramid(sampleRate, clipDurationFrames, 440f))
-                )
-            )
-
-            val track2 = TrackUiModel(
-                trackId = 2,
-                name = "Bass Synth",
-                colorHex = 0xFFFF4081,
-                volumeLinear = 0.85f,
-                pan = -0.15f,
-                clips = listOf(
-                    AudioClipUiModel(102, 2, "Bass_Line_Groove", 0L, clipDurationFrames, generateSyntheticPyramid(sampleRate, clipDurationFrames, 110f))
-                )
-            )
-
-            val track3 = TrackUiModel(
-                trackId = 3,
-                name = "Acoustic Drums",
-                colorHex = 0xFFFFD740,
-                volumeLinear = 0.90f,
-                pan = 0.20f,
-                clips = listOf(
-                    AudioClipUiModel(103, 3, "Drum_Loop_120", 0L, clipDurationFrames, generateSyntheticPyramid(sampleRate, clipDurationFrames, 220f))
-                )
-            )
-
-            val track4 = TrackUiModel(
-                trackId = 4,
-                name = "Analog Pad",
-                colorHex = 0xFF7C4DFF,
-                volumeLinear = 0.70f,
-                pan = -0.35f,
-                clips = listOf(
-                    AudioClipUiModel(104, 4, "Pad_Atmosphere", 0L, clipDurationFrames, generateSyntheticPyramid(sampleRate, clipDurationFrames, 330f))
-                )
-            )
-
+            val sampleRate = 48000
+            val initialFrames = sampleRate * 32L // Default 32s empty project
             return StudioUiState(
                 bpm = 120.0,
                 sampleRate = sampleRate,
-                totalFrames = sampleRate * 32L,
+                totalFrames = initialFrames,
                 loopStartFrame = 0L,
-                loopEndFrame = clipDurationFrames,
-                isLooping = true,
-                tracks = listOf(track1, track2, track3, track4),
-                selectedTrackId = 1
+                loopEndFrame = sampleRate * 16L,
+                isLooping = false,
+                tracks = emptyList(),
+                selectedTrackId = null
             )
-        }
-
-        /**
-         * Generates a 5-level multi-resolution peak pyramid for instantaneous waveform rendering
-         */
-        fun generateSyntheticPyramid(sampleRate: Int, totalFrames: Long, baseFreqHz: Float): WaveformDecimationPyramid {
-            val blockSizes = listOf(256, 1024, 4096, 16384, 65536)
-            val levels = blockSizes.map { blockSize ->
-                val blockCount = max(1, (totalFrames / blockSize).toInt())
-                val minPeaks = FloatArray(blockCount)
-                val maxPeaks = FloatArray(blockCount)
-                val rmsPeaks = FloatArray(blockCount)
-
-                for (b in 0 until blockCount) {
-                    val t = (b * blockSize).toFloat() / sampleRate
-                    val envelope = (0.3f + 0.7f * exp(-((t % 2.0f) * 1.5f)))
-                    val harmonic = (sin(2.0 * PI * baseFreqHz * t) * 0.7f + sin(4.0 * PI * baseFreqHz * t) * 0.3f).toFloat()
-                    val peak = (envelope * harmonic).coerceIn(-1.0f, 1.0f)
-
-                    maxPeaks[b] = maxOf(0.05f, kotlin.math.abs(peak))
-                    minPeaks[b] = -maxPeaks[b]
-                    rmsPeaks[b] = maxPeaks[b] * 0.707f
-                }
-
-                DecimationLevel(blockSize, minPeaks, maxPeaks, rmsPeaks)
-            }
-
-            return WaveformDecimationPyramid(sampleRate, totalFrames, levels)
         }
     }
 

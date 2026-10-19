@@ -223,3 +223,48 @@ tasks.register("verifyComposeOnlyUi") {
     }
 }
 
+tasks.register("verifyNoPlaceholders") {
+    group = "verification"
+    description = "Enforces Ground Rule 0: No fake/placeholder tracks, clips, waveforms, or synthetic audio in production code."
+
+    doLast {
+        val violations = mutableListOf<String>()
+        val mainDir = file("src/main/java")
+        if (mainDir.exists()) {
+            val forbiddenPatterns = listOf(
+                Regex("""\bgenerateSyntheticPyramid\b"""),
+                Regex(""""Vocal_Take_01""""),
+                Regex(""""Drum_Loop_120""""),
+                Regex(""""DirectWave Sampler 5"""")
+            )
+
+            mainDir.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { ktFile ->
+                val relPath = ktFile.relativeTo(mainDir).path.replace('\\', '/')
+                val lines = ktFile.readLines()
+                lines.forEachIndexed { index, line ->
+                    val lineNum = index + 1
+                    val trimmed = line.trim()
+                    if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) {
+                        return@forEachIndexed
+                    }
+                    for (pattern in forbiddenPatterns) {
+                        if (pattern.containsMatchIn(line)) {
+                            violations.add("Forbidden placeholder data detected in production code at $relPath:$lineNum: $trimmed")
+                        }
+                    }
+                }
+            }
+        }
+
+        if (violations.isNotEmpty()) {
+            val message = buildString {
+                appendLine("verifyNoPlaceholders FAILED with ${violations.size} rule violation(s):")
+                violations.forEach { appendLine("  [VIOLATION] $it") }
+            }
+            throw GradleException(message)
+        } else {
+            logger.lifecycle("SUCCESS: verifyNoPlaceholders passed. Zero fake/synthetic placeholder data found in production source.")
+        }
+    }
+}
+

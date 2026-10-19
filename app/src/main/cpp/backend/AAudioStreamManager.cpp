@@ -2,6 +2,7 @@
 #include "../audio/AudioEngine.h"
 #include <android/log.h>
 #include <algorithm>
+#include <chrono>
 
 #define LOG_TAG "DAW_AAudio"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -185,8 +186,17 @@ aaudio_data_callback_result_t AAudioStreamManager::onAudioData(float* audioData,
         return AAUDIO_CALLBACK_RESULT_CONTINUE;
     }
 
-    // Real-time render callback into AudioEngine
+    // Real-time render callback into AudioEngine with performance timing
+    const auto start_time = std::chrono::steady_clock::now();
     engine_.renderAudio(audioData, static_cast<size_t>(numFrames));
+    const auto end_time = std::chrono::steady_clock::now();
+
+    const double elapsed_sec = std::chrono::duration<double>(end_time - start_time).count();
+    const double buffer_sec = static_cast<double>(numFrames) / static_cast<double>(sample_rate_ > 0 ? sample_rate_ : 48000);
+    const float raw_cpu = buffer_sec > 0.0 ? static_cast<float>((elapsed_sec / buffer_sec) * 100.0) : 0.0f;
+    const float prev_cpu = engine_.getCpuUsage();
+    engine_.setCpuUsage(prev_cpu * 0.9f + raw_cpu * 0.1f);
+
     return AAUDIO_CALLBACK_RESULT_CONTINUE;
 }
 

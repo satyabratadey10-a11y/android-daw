@@ -76,9 +76,15 @@ public:
 
     // File IO & Timeline
     bool loadClip(int track_id, int clip_id, const std::string& wav_file_path, int64_t start_offset_frames);
+    bool loadClipData(int track_id, int clip_id, std::vector<float> left, std::vector<float> right, int64_t start_offset_frames);
+    bool moveClip(int track_id, int clip_id, int64_t new_start_frame);
+    bool removeClip(int track_id, int clip_id);
     bool startRecording(int track_id, const std::string& destination_wav_path);
     void stopRecording(int track_id);
     bool renderMixdown(const std::string& output_wav_path, int bit_depth, int64_t total_frames);
+
+    void setCpuUsage(float percent) noexcept { cpu_usage_percent_.store(percent, std::memory_order_relaxed); }
+    [[nodiscard]] float getCpuUsage() const noexcept { return cpu_usage_percent_.load(std::memory_order_relaxed); }
 
     // Audio Callback Render Entry Points
     // Interleaved stereo for AAudio output callback
@@ -116,6 +122,7 @@ private:
     std::atomic<float> master_peak_r_{0.0f};
     std::atomic<float> master_rms_l_{0.0f};
     std::atomic<float> master_rms_r_{0.0f};
+    std::atomic<float> cpu_usage_percent_{0.0f};
 
     // Pre-allocated planar mixing accumulators (zero allocation on RT thread)
     std::vector<float> master_buf_l_;

@@ -1,6 +1,7 @@
 package com.android.daw
 
 import com.android.daw.bridge.NativeAudioEngine
+import com.android.daw.viewmodel.AudioClipUiModel
 import com.android.daw.viewmodel.StudioAction
 import com.android.daw.viewmodel.StudioViewModel
 import com.android.daw.viewmodel.TransportState
@@ -23,7 +24,8 @@ import org.junit.Test
 /**
  * Unit test suite for [StudioViewModel].
  * Validates MVI unidirectional data flow (UDF), [StudioAction] intent dispatching,
- * [StudioUiState] state transitions, track CRUD, solo/mute/arm logic, and DSP mutations.
+ * [StudioUiState] state transitions, track CRUD, solo/mute/arm logic, clip manipulation, and DSP mutations.
+ * Adheres strictly to Ground Rule 0: Clean project starting with 0 tracks and no fake data.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StudioViewModelTest {
@@ -64,9 +66,9 @@ class StudioViewModelTest {
         assertEquals(TransportState.STOPPED, state.transportState)
         assertEquals(0L, state.currentFrame)
         assertEquals(120.0, state.bpm, 1e-4)
-        assertEquals(4, state.tracks.size)
-        assertEquals(1, state.selectedTrackId)
-        assertTrue(state.isLooping)
+        assertEquals(0, state.tracks.size) // Ground Rule 0: Starts with empty project
+        assertNull(state.selectedTrackId)
+        assertFalse(state.isLooping)
         assertFalse(state.isMixerViewActive)
         assertFalse(state.isDspInspectorOpen)
     }
@@ -105,7 +107,7 @@ class StudioViewModelTest {
         // Toggle Loop
         viewModel.onAction(StudioAction.ToggleLoop)
         advanceUntilIdle()
-        assertFalse(viewModel.uiState.value.isLooping)
+        assertTrue(viewModel.uiState.value.isLooping)
 
         // Set Loop Range
         viewModel.onAction(StudioAction.SetLoopRange(22050L, 88200L))
@@ -127,22 +129,29 @@ class StudioViewModelTest {
         assertTrue(addedTrack.name.startsWith("Guitar"))
         assertEquals(addedTrack.trackId, afterAdd.selectedTrackId)
 
-        // Select different track
-        viewModel.onAction(StudioAction.SelectTrack(2))
+        // Add another track
+        viewModel.onAction(StudioAction.AddTrack("Bass"))
         advanceUntilIdle()
-        assertEquals(2, viewModel.uiState.value.selectedTrackId)
+        assertEquals(2, viewModel.uiState.value.tracks.size)
+
+        // Select first track
+        viewModel.onAction(StudioAction.SelectTrack(addedTrack.trackId))
+        advanceUntilIdle()
+        assertEquals(addedTrack.trackId, viewModel.uiState.value.selectedTrackId)
 
         // Remove track
         val trackToRemove = addedTrack.trackId
         viewModel.onAction(StudioAction.RemoveTrack(trackToRemove))
         advanceUntilIdle()
-        assertEquals(initialCount, viewModel.uiState.value.tracks.size)
+        assertEquals(1, viewModel.uiState.value.tracks.size)
         assertNull(viewModel.uiState.value.tracks.firstOrNull { it.trackId == trackToRemove })
     }
 
     @Test
     fun testTrackMixingControls() = runTest(testDispatcher) {
-        val targetId = 1
+        viewModel.onAction(StudioAction.AddTrack("Audio Track"))
+        advanceUntilIdle()
+        val targetId = viewModel.uiState.value.tracks.first().trackId
 
         // Volume
         viewModel.onAction(StudioAction.SetTrackVolume(targetId, 0.72f))
@@ -219,7 +228,9 @@ class StudioViewModelTest {
 
     @Test
     fun testDspEffectMutations() = runTest(testDispatcher) {
-        val trackId = 1
+        viewModel.onAction(StudioAction.AddTrack("Audio Track"))
+        advanceUntilIdle()
+        val trackId = viewModel.uiState.value.tracks.first().trackId
 
         // Update EQ
         viewModel.onAction(StudioAction.UpdateEq(trackId, bandIndex = 1, freqHz = 550f, gainDb = 4.5f, q = 1.8f))
@@ -255,7 +266,9 @@ class StudioViewModelTest {
 
     @Test
     fun testRecordingArmGuardAndStatusMessage() = runTest(testDispatcher) {
-        // Try recording with no tracks armed
+        viewModel.onAction(StudioAction.AddTrack("Audio Track"))
+        advanceUntilIdle()
+
         // Ensure all tracks unarmed first
         viewModel.uiState.value.tracks.forEach { track ->
             if (track.isArmed) {
@@ -277,8 +290,9 @@ class StudioViewModelTest {
         advanceUntilIdle()
         assertNull(viewModel.uiState.value.statusMessage)
 
-        // Arm track 1 and record
-        viewModel.onAction(StudioAction.ToggleArm(1))
+        // Arm track and record
+        val trackId = viewModel.uiState.value.tracks.first().trackId
+        viewModel.onAction(StudioAction.ToggleArm(trackId))
         advanceUntilIdle()
         viewModel.onAction(StudioAction.ToggleRecord(true))
         advanceUntilIdle()
@@ -345,44 +359,86 @@ class StudioViewModelTest {
     }
 
     @Test
-    fun testContextualClipSelectionAndActions() = runTest(testDispatcher) {
-        val track1 = viewModel.uiState.value.tracks.first()
-        val originalClip = track1.clips.first()
-        val originalClipId = originalClip.clipId
+    fun testClipPlacementAndActions() = runTest(testDispatcher) {
+        viewModel.onAction(StudioAction.AddTrack("Audio Track"))
+        advanceUntilIdle()
+
+        val track = viewModel.uiState.value.tracks.first()
+        val clipId = 201
+        val testClip = AudioClipUiModel(
+            clipId = clipId,
+            trackId = track.trackId,
+            name = "Test Clip",
+            startFrame = 0L,
+            durationFrames = 48000L * 4L,
+            waveformPeakData = null
+        )
+
+        // Inject clip manually into state for testing clip actions
+        val uiStateField = StudioViewModel::class.java.getDeclaredField("_uiState")
+        uiStateField.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val stateFlow = uiStateField.get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<com.android.daw.viewmodel.StudioUiState>
+        stateFlow.value = stateFlow.value.copy(
+            tracks = listOf(track.copy(clips = listOf(testClip)))
+        )
 
         // Select Clip
-        viewModel.onAction(StudioAction.SelectClip(originalClipId))
+        viewModel.onAction(StudioAction.SelectClip(clipId))
         advanceUntilIdle()
-        assertEquals(originalClipId, viewModel.uiState.value.selectedClipId)
+        assertEquals(clipId, viewModel.uiState.value.selectedClipId)
 
         // Open clip menu
         viewModel.onAction(StudioAction.SetClipMenuOpen(true))
         advanceUntilIdle()
         assertTrue(viewModel.uiState.value.isClipMenuOpen)
 
+        // Move Clip (FN-03)
+        val newStart = 48000L * 2L
+        viewModel.onAction(StudioAction.MoveClip(clipId, newStart))
+        advanceUntilIdle()
+        val movedClip = viewModel.uiState.value.tracks.first().clips.first { it.clipId == clipId }
+        assertEquals(newStart, movedClip.startFrame)
+
+        // Trim Clip (FN-03)
+        val trimmedStart = 48000L * 3L
+        val trimmedDur = 48000L * 2L
+        viewModel.onAction(StudioAction.TrimClip(clipId, trimmedStart, trimmedDur))
+        advanceUntilIdle()
+        val trimmedClip = viewModel.uiState.value.tracks.first().clips.first { it.clipId == clipId }
+        assertEquals(trimmedStart, trimmedClip.startFrame)
+        assertEquals(trimmedDur, trimmedClip.durationFrames)
+
         // Copy Clip
-        val initialClipCount = track1.clips.size
-        viewModel.onAction(StudioAction.ExecuteClipAction(originalClipId, "COPY"))
+        val countBeforeCopy = viewModel.uiState.value.tracks.first().clips.size
+        viewModel.onAction(StudioAction.ExecuteClipAction(clipId, "COPY"))
         advanceUntilIdle()
-        val updatedTrackAfterCopy = viewModel.uiState.value.tracks.first { it.trackId == track1.trackId }
-        assertEquals(initialClipCount + 1, updatedTrackAfterCopy.clips.size)
+        val countAfterCopy = viewModel.uiState.value.tracks.first().clips.size
+        assertEquals(countBeforeCopy + 1, countAfterCopy)
 
-        // Slice original clip
-        viewModel.onAction(StudioAction.ExecuteClipAction(originalClipId, "SLICE"))
-        advanceUntilIdle()
-        val updatedTrackAfterSlice = viewModel.uiState.value.tracks.first { it.trackId == track1.trackId }
-        assertEquals(initialClipCount + 2, updatedTrackAfterSlice.clips.size)
-
-        // Mute clip
-        viewModel.onAction(StudioAction.ExecuteClipAction(originalClipId, "MUTE"))
+        // Mute Clip
+        viewModel.onAction(StudioAction.ExecuteClipAction(clipId, "MUTE"))
         advanceUntilIdle()
         assertNotNull(viewModel.uiState.value.statusMessage)
 
-        // Delete clip
-        viewModel.onAction(StudioAction.ExecuteClipAction(originalClipId, "DELETE"))
+        // Delete Clip
+        viewModel.onAction(StudioAction.ExecuteClipAction(clipId, "DELETE"))
         advanceUntilIdle()
-        val updatedTrackAfterDelete = viewModel.uiState.value.tracks.first { it.trackId == track1.trackId }
-        assertNull(updatedTrackAfterDelete.clips.firstOrNull { it.clipId == originalClipId })
+        val updatedClips = viewModel.uiState.value.tracks.first().clips
+        assertNull(updatedClips.firstOrNull { it.clipId == clipId })
         assertNull(viewModel.uiState.value.selectedClipId)
+    }
+
+    @Test
+    fun testOfflineExportStateTransitions() = runTest(testDispatcher) {
+        viewModel.onAction(StudioAction.StartExport(16))
+        advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.statusMessage)
+
+        // Cancel export
+        viewModel.onAction(StudioAction.CancelExport)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isExporting)
+        assertEquals("Export cancelled.", viewModel.uiState.value.statusMessage)
     }
 }

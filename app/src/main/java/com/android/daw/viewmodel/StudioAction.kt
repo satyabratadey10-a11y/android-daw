@@ -57,6 +57,9 @@ sealed interface StudioAction {
     data class SelectClip(val clipId: Int?) : StudioAction
     data class ExecuteClipAction(val clipId: Int, val action: String) : StudioAction
     data class SetClipMenuOpen(val isOpen: Boolean) : StudioAction
+    data class MoveClip(val clipId: Int, val newStartFrame: Long) : StudioAction
+    data class SplitClipAtPlayhead(val clipId: Int) : StudioAction
+    data class TrimClip(val clipId: Int, val newStartFrame: Long, val newDurationFrames: Long) : StudioAction
 
     // --- DSP Effects Rack Mutations ---
     data class UpdateEq(

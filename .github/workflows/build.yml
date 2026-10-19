@@ -45,6 +45,9 @@ jobs:
       - name: Verify Compose-Only UI Architecture
         run: ./gradlew verifyComposeOnlyUi --stacktrace
 
+      - name: Verify Zero Fake/Placeholder Data
+        run: ./gradlew verifyNoPlaceholders --stacktrace
+
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest --stacktrace
 
