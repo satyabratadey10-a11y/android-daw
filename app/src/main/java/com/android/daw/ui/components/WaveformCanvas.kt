@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.daw.ui.studio.TimelineLayoutMath
@@ -45,13 +46,15 @@ fun WaveformCanvas(
     trackColor: Color,
     modifier: Modifier = Modifier,
     isMuted: Boolean = false,
-    originInsetPx: Float = TimelineLayoutMath.ORIGIN_INSET_DP.dp.toPx()
+    originInsetDp: Dp = TimelineLayoutMath.ORIGIN_INSET_DP.dp
 ) {
     val textMeasurer = rememberTextMeasurer()
     val inkOnDark = Daw.colors.inkOnDark
+    val inkMuted = Daw.colors.inkMuted
     val neutralFaint = Daw.colors.n3Raised.copy(alpha = 0.38f)
 
     Canvas(modifier = modifier.fillMaxSize()) {
+        val originInsetPx = originInsetDp.toPx()
         val pyramid = clip.waveformPeakData ?: return@Canvas
         val sampleRate = pyramid.sampleRate
         if (sampleRate <= 0) return@Canvas
@@ -175,7 +178,7 @@ fun WaveformCanvas(
         envelopePath.close()
 
         // 6. Draw Waveform in Base Step (trackColor)
-        val waveColor = if (isMuted) Daw.colors.inkMuted.copy(alpha = 0.38f) else trackColor
+        val waveColor = if (isMuted) inkMuted.copy(alpha = 0.38f) else trackColor
 
         drawPath(
             path = envelopePath,

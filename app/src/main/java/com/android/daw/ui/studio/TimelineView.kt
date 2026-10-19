@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -221,7 +222,6 @@ fun TimelineView(
                                             scrollOffsetPx = scrollOffset,
                                             trackColor = Daw.colors.trackColor(index),
                                             isMuted = track.isMuted,
-                                            originInsetPx = TimelineLayoutMath.ORIGIN_INSET_DP.dp.toPx(),
                                             modifier = Modifier.fillMaxSize()
                                         )
 
@@ -397,8 +397,9 @@ private fun TimelineRuler(
     val skyFaint = Daw.colors.sky.faint
     val skyBase = Daw.colors.sky.base
 
-    val originInsetPx = TimelineLayoutMath.ORIGIN_INSET_DP.dp.toPx()
-    val circleRadius = TimelineLayoutMath.BUBBLE_RADIUS_DP.dp.toPx()
+    val density = LocalDensity.current
+    val originInsetPx = with(density) { TimelineLayoutMath.ORIGIN_INSET_DP.dp.toPx() }
+    val circleRadius = with(density) { TimelineLayoutMath.BUBBLE_RADIUS_DP.dp.toPx() }
 
     val bubbleTextStyle = TextStyle(
         color = inkOnLight,
