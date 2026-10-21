@@ -359,7 +359,7 @@ fun TimelineView(
                     ) {
                         Text(
                             text = "Empty Project • Tap + below to add a track",
-                            style = Daw.type.body,
+                            style = Daw.type.label,
                             color = Daw.colors.inkMuted
                         )
                     }

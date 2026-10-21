@@ -493,14 +493,6 @@ class NativeAudioEngine(
     }
 
     // ========================================================================
-    // MIDI & Audition (Stubs for future milestone)
-    // ========================================================================
-
-    override suspend fun noteOn(trackId: Int, pitch: Int, velocity: Int) {}
-    override suspend fun noteOff(trackId: Int, pitch: Int) {}
-    override suspend fun allNotesOff(trackId: Int) {}
-
-    // ========================================================================
     // Native Multi-Format Audio Decoding (WAV, MP3, FLAC)
     // ========================================================================
 

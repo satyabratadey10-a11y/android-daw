@@ -429,6 +429,8 @@ private fun PianoKeyColumn(
     val textMeasurer = rememberTextMeasurer()
     val inkMuted = Daw.colors.inkMuted
     val inkOnDark = Daw.colors.inkOnDark
+    val inkOnLight = Daw.colors.inkOnLight
+    val mintBase = Daw.colors.mint.base
     val n2Surface = Daw.colors.n2Surface
     val n0Workspace = Daw.colors.n0Workspace
     val n3Raised = Daw.colors.n3Raised
@@ -465,7 +467,7 @@ private fun PianoKeyColumn(
             val yTop = i * keyHeight
 
             val keyColor = when {
-                isPressed -> Daw.colors.mint.base
+                isPressed -> mintBase
                 isBlackKey -> n0Workspace
                 else -> n2Surface
             }
@@ -491,7 +493,7 @@ private fun PianoKeyColumn(
                 val layout = textMeasurer.measure(
                     text = label,
                     style = TextStyle(
-                        color = if (isPressed) Daw.colors.inkOnLight else inkOnDark,
+                        color = if (isPressed) inkOnLight else inkOnDark,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Default,
@@ -539,6 +541,7 @@ private fun NoteGridCanvas(
     val n3Raised = Daw.colors.n3Raised
     val mintBase = Daw.colors.mint.base
     val inkOnDark = Daw.colors.inkOnDark
+    val inkOnLight = Daw.colors.inkOnLight
 
     // Drag-move / drag-resize state
     var draggingNoteId by remember { mutableIntStateOf(-1) }
@@ -794,7 +797,7 @@ private fun NoteGridCanvas(
                     // Right edge resize handle indicator
                     val handleW = min(8.dp.toPx(), nW / 3f)
                     drawRoundRect(
-                        color = Daw.colors.inkOnLight.copy(alpha = 0.4f),
+                        color = inkOnLight.copy(alpha = 0.4f),
                         topLeft = Offset(nX + nW - handleW, nY),
                         size = Size(handleW, nH),
                         cornerRadius = CornerRadius(noteCornerRadius, noteCornerRadius)
