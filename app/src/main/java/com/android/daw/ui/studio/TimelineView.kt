@@ -222,7 +222,7 @@ fun TimelineView(
                                                     val cDurSec = clip.durationFrames.toFloat() / sampleRate
                                                     val cX = originInsetPx + (cStartSec * zoom) - scrollOffset
                                                     val cW = cDurSec * zoom
-                                                    tapOffset.x in cX..(cX + cW)
+                                                    tapOffset.x >= cX && tapOffset.x <= (cX + cW)
                                                 }
                                                 if (!hitClip) {
                                                     activePlusClipTarget = Triple(track.trackId, snappedFrame, tapOffset.x)

@@ -585,7 +585,7 @@ private fun NoteGridCanvas(
                             val nW = max(6f, nDurSec * zoom)
                             val nKeyIdx = maxPitch - note.pitch
                             val nY = nKeyIdx * keyHeight
-                            tapOffset.x in nX..(nX + nW) && tapOffset.y in nY..(nY + keyHeight)
+                            tapOffset.x >= nX && tapOffset.x <= (nX + nW) && tapOffset.y >= nY && tapOffset.y <= (nY + keyHeight)
                         }
 
                         when (tool) {
@@ -629,7 +629,7 @@ private fun NoteGridCanvas(
                             val nW = max(8f, nDurSec * zoom)
                             val nKeyIdx = maxPitch - n.pitch
                             val nY = nKeyIdx * keyHeight
-                            startOffset.x in (nX - 4f)..(nX + nW + 4f) && startOffset.y in nY..(nY + keyHeight)
+                            startOffset.x >= (nX - 4f) && startOffset.x <= (nX + nW + 4f) && startOffset.y >= nY && startOffset.y <= (nY + keyHeight)
                         }
 
                         if (note != null) {
@@ -781,7 +781,7 @@ private fun NoteGridCanvas(
                 val nH = keyHeight - 2.dp.toPx()
 
                 if (nX + nW >= 0f && nX <= canvasW) {
-                    val isPlayingNow = currentPlayhead in note.startFrame..(note.startFrame + note.durationFrames)
+                    val isPlayingNow = currentPlayhead >= note.startFrame && currentPlayhead <= (note.startFrame + note.durationFrames)
                     val noteFill = if (isPlayingNow) mintBase else trackColor.copy(alpha = 0.85f)
 
                     drawRoundRect(
