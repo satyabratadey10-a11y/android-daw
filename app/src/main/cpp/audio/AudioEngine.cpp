@@ -145,6 +145,27 @@ void AudioEngine::setTrackArmed(int track_id, bool armed) noexcept {
     }
 }
 
+void AudioEngine::setTrackType(int track_id, int track_type) noexcept {
+    auto* track = getTrack(track_id);
+    if (track) {
+        track->setTrackType(static_cast<TrackType>(track_type));
+    }
+}
+
+void AudioEngine::sendNoteOn(int track_id, int note, float velocity) noexcept {
+    auto* track = getTrack(track_id);
+    if (track) {
+        track->noteOn(note, velocity);
+    }
+}
+
+void AudioEngine::sendNoteOff(int track_id, int note) noexcept {
+    auto* track = getTrack(track_id);
+    if (track) {
+        track->noteOff(note);
+    }
+}
+
 void AudioEngine::setTrackEqBand(int track_id, int band_index, int filter_type, float freq_hz, float gain_db, float q_factor) noexcept {
     auto* track = getTrack(track_id);
     if (track && band_index >= 0 && band_index < static_cast<int>(dsp::ParametricEq::kNumBands)) {
@@ -221,6 +242,29 @@ bool AudioEngine::loadClipData(int track_id, int clip_id, std::vector<float> lef
     AudioClip clip(clip_id, "Clip", start_offset_frames);
     clip.setAudioData(std::move(left), std::move(right));
     track->addClip(std::move(clip));
+    return true;
+}
+
+bool AudioEngine::loadMidiClip(int track_id, int clip_id, const std::string& name, int64_t start_offset_frames, int64_t duration_frames) {
+    auto* track = getTrack(track_id);
+    if (!track) return false;
+
+    AudioClip clip(clip_id, name, start_offset_frames);
+    clip.setDurationFrames(duration_frames);
+    clip.setMidi(true);
+    track->addClip(std::move(clip));
+    return true;
+}
+
+bool AudioEngine::setClipMidiNotes(int track_id, int clip_id, const std::vector<MidiNote>& notes) {
+    auto* track = getTrack(track_id);
+    if (!track) return false;
+
+    auto* clip = track->getClip(clip_id);
+    if (!clip) return false;
+
+    clip->setMidi(true);
+    clip->setMidiNotes(notes);
     return true;
 }
 

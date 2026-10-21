@@ -62,6 +62,9 @@ public:
     void setTrackMute(int track_id, bool muted) noexcept;
     void setTrackSolo(int track_id, bool soloed) noexcept;
     void setTrackArmed(int track_id, bool armed) noexcept;
+    void setTrackType(int track_id, int track_type) noexcept;
+    void sendNoteOn(int track_id, int note, float velocity) noexcept;
+    void sendNoteOff(int track_id, int note) noexcept;
 
     // DSP Configuration
     void setTrackEqBand(int track_id, int band_index, int filter_type, float freq_hz, float gain_db, float q_factor) noexcept;
@@ -77,6 +80,8 @@ public:
     // File IO & Timeline
     bool loadClip(int track_id, int clip_id, const std::string& wav_file_path, int64_t start_offset_frames);
     bool loadClipData(int track_id, int clip_id, std::vector<float> left, std::vector<float> right, int64_t start_offset_frames);
+    bool loadMidiClip(int track_id, int clip_id, const std::string& name, int64_t start_offset_frames, int64_t duration_frames);
+    bool setClipMidiNotes(int track_id, int clip_id, const std::vector<MidiNote>& notes);
     bool moveClip(int track_id, int clip_id, int64_t new_start_frame);
     bool removeClip(int track_id, int clip_id);
     bool startRecording(int track_id, const std::string& destination_wav_path);

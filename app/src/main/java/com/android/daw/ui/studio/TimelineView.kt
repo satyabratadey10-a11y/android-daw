@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -24,7 +25,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,8 +65,10 @@ import com.android.daw.ui.theme.Daw
 import com.android.daw.ui.theme.DawIcons
 import com.android.daw.ui.theme.DawTheme
 import com.android.daw.ui.theme.Layer
+import com.android.daw.viewmodel.PianoRollSnap
 import com.android.daw.viewmodel.StudioAction
 import com.android.daw.viewmodel.StudioUiState
+import com.android.daw.viewmodel.TrackInstrumentType
 import kotlin.math.max
 
 /**
@@ -87,6 +94,11 @@ fun TimelineView(
     val sampleRate = state.sampleRate
     val zoom = state.zoomPixelsPerSecond
     val scrollOffset = state.horizontalScrollOffsetPx
+    val originInsetPx = TimelineLayoutMath.ORIGIN_INSET_DP * 2.5f
+    val framesPerBeat = (60.0 / state.bpm) * sampleRate
+    val framesPerBar = (framesPerBeat * state.beatsPerBar).toLong()
+
+    var activePlusClipTarget by remember { mutableStateOf<Triple<Int, Long, Float>?>(null) }
 
     Box(
         modifier = modifier
@@ -199,6 +211,27 @@ fun TimelineView(
                                     .weight(1f)
                                     .fillMaxHeight()
                                     .clipToBounds()
+                                    .pointerInput(track.trackId, zoom, scrollOffset) {
+                                        detectTapGestures(
+                                            onTap = { tapOffset ->
+                                                val tapSec = (tapOffset.x + scrollOffset - originInsetPx).coerceAtLeast(0f) / zoom
+                                                val rawFrame = (tapSec * sampleRate).toLong()
+                                                val snappedFrame = ((rawFrame / framesPerBar) * framesPerBar).coerceAtLeast(0L)
+                                                val hitClip = track.clips.any { clip ->
+                                                    val cStartSec = clip.startFrame.toFloat() / sampleRate
+                                                    val cDurSec = clip.durationFrames.toFloat() / sampleRate
+                                                    val cX = originInsetPx + (cStartSec * zoom) - scrollOffset
+                                                    val cW = cDurSec * zoom
+                                                    tapOffset.x in cX..(cX + cW)
+                                                }
+                                                if (!hitClip) {
+                                                    activePlusClipTarget = Triple(track.trackId, snappedFrame, tapOffset.x)
+                                                } else {
+                                                    activePlusClipTarget = null
+                                                }
+                                            }
+                                        )
+                                    }
                                     .padding(vertical = Daw.space.stroke)
                             ) {
                                 track.clips.forEach { clip ->
@@ -207,14 +240,43 @@ fun TimelineView(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .clickable(
-                                                interactionSource = remember { MutableInteractionSource() },
-                                                indication = null,
-                                                onClick = {
-                                                    val nextSelection = if (isClipSelected) null else clip.clipId
-                                                    onAction(StudioAction.SelectClip(nextSelection))
-                                                }
-                                            )
+                                            .pointerInput(clip.clipId, zoom, scrollOffset) {
+                                                detectTapGestures(
+                                                    onTap = {
+                                                        activePlusClipTarget = null
+                                                        val nextSelection = if (isClipSelected) null else clip.clipId
+                                                        onAction(StudioAction.SelectClip(nextSelection))
+                                                    },
+                                                    onDoubleTap = {
+                                                        onAction(StudioAction.OpenPianoRoll(track.trackId, clip.clipId))
+                                                    }
+                                                )
+                                            }
+                                            .pointerInput(clip.clipId, zoom, scrollOffset) {
+                                                var isResizingClip = false
+                                                detectDragGestures(
+                                                    onDragStart = { startOffset ->
+                                                        val cStartSec = clip.startFrame.toFloat() / sampleRate
+                                                        val cDurSec = clip.durationFrames.toFloat() / sampleRate
+                                                        val cX = originInsetPx + (cStartSec * zoom) - scrollOffset
+                                                        val cW = cDurSec * zoom
+                                                        isResizingClip = (startOffset.x >= cX + cW - 24f)
+                                                    },
+                                                    onDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        val deltaFrames = ((dragAmount.x / zoom) * sampleRate).toLong()
+                                                        if (isResizingClip) {
+                                                            val newDur = maxOf(1000L, clip.durationFrames + deltaFrames)
+                                                            val snappedDur = ((newDur / framesPerBeat.toLong()) * framesPerBeat.toLong()).coerceAtLeast(framesPerBeat.toLong())
+                                                            onAction(StudioAction.TrimClip(clip.clipId, clip.startFrame, snappedDur))
+                                                        } else {
+                                                            val newStart = maxOf(0L, clip.startFrame + deltaFrames)
+                                                            val snappedStart = ((newStart / framesPerBeat.toLong()) * framesPerBeat.toLong()).coerceAtLeast(0L)
+                                                            onAction(StudioAction.MoveClip(clip.clipId, snappedStart))
+                                                        }
+                                                    }
+                                                )
+                                            }
                                     ) {
                                         WaveformCanvas(
                                             clip = clip,
@@ -238,6 +300,37 @@ fun TimelineView(
                                         }
                                     }
                                 }
+
+                                // "+ Clip" Bubble when empty area is tapped
+                                val plusTarget = activePlusClipTarget
+                                if (plusTarget != null && plusTarget.first == track.trackId) {
+                                    Box(
+                                        modifier = Modifier
+                                            .offset { IntOffset(plusTarget.third.toInt(), 0) }
+                                            .height(36.dp)
+                                            .background(Daw.colors.mint.base, shape = Daw.radii.xs)
+                                            .clickable {
+                                                onAction(
+                                                    StudioAction.CreateMidiClip(
+                                                        trackId = track.trackId,
+                                                        startFrame = plusTarget.second,
+                                                        durationFrames = framesPerBar,
+                                                        name = "Pattern ${track.clips.size + 1}"
+                                                    )
+                                                )
+                                                activePlusClipTarget = null
+                                            }
+                                            .padding(horizontal = Daw.space.sm, vertical = Daw.space.xs),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "+ Clip",
+                                            style = Daw.type.caption,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Daw.colors.inkOnLight
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -253,6 +346,22 @@ fun TimelineView(
                     // Spacer at bottom of tracks for the Add FAB
                     item {
                         Spacer(modifier = Modifier.height(72.dp))
+                    }
+                }
+
+                // Empty State Hint
+                if (state.tracks.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 96.dp),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        Text(
+                            text = "Empty Project • Tap + below to add a track",
+                            style = Daw.type.body,
+                            color = Daw.colors.inkMuted
+                        )
                     }
                 }
 

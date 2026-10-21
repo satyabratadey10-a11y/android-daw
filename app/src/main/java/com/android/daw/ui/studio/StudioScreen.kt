@@ -85,15 +85,27 @@ fun StudioScreen(
                 .fillMaxSize()
                 .zIndex(Layer.Content)
         ) {
-            // Multi-track Timeline Sequencer (Takes all available height)
-            TimelineView(
-                state = state,
-                playheadProvider = playheadProvider,
-                onAction = onAction,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            )
+            if (state.isPianoRollOpen) {
+                // UI-11: Full replacement of timeline area, transport stays visible
+                PianoRollView(
+                    state = state,
+                    playheadProvider = playheadProvider,
+                    onAction = onAction,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                )
+            } else {
+                // Multi-track Timeline Sequencer (Takes all available height)
+                TimelineView(
+                    state = state,
+                    playheadProvider = playheadProvider,
+                    onAction = onAction,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                )
+            }
 
             // Persistent 48dp Transport Bar docked at bottom
             TransportBar(
@@ -124,13 +136,6 @@ fun StudioScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        // 3. Piano Roll Bottom Sheet (Slides from bottom, 40% height)
-        PianoRollPanel(
-            state = state,
-            onAction = onAction,
-            onDismiss = { onAction(StudioAction.TogglePianoRollPanel) },
-            modifier = Modifier.fillMaxSize()
-        )
 
         // 4. Modules & Instruments Left Drawer (50% width)
         ModulesDrawer(
@@ -174,15 +179,16 @@ fun StudioScreen(
         }
 
         // =========================================================================
-        // TOAST / TRANSIENT NOTIFICATION LAYER (Layer.Toast = 7f)
+        // TOAST / TRANSIENT NOTIFICATION LAYER (Layer.Toast = 7f, UI-06)
+        // Bottom-center lane just above transport bar, auto-dismiss 3s, no [DISMISS] button
         // =========================================================================
         state.statusMessage?.let { msg ->
             StatusBanner(
                 message = msg,
                 onDismiss = { onAction(StudioAction.DismissStatusMessage) },
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = Daw.space.md)
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = Daw.space.transportHeight + Daw.space.md)
                     .zIndex(Layer.Toast)
             )
         }
@@ -190,7 +196,8 @@ fun StudioScreen(
 }
 
 /**
- * Status banner notification on Layer.Toast (7f)
+ * Status banner notification on Layer.Toast (7f) adhering to UI-06:
+ * Bottom-center above transport, auto-dismisses after 3s, zero [DISMISS] button.
  */
 @Composable
 private fun StatusBanner(
@@ -198,6 +205,11 @@ private fun StatusBanner(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    androidx.compose.runtime.LaunchedEffect(message) {
+        kotlinx.coroutines.delay(3000L)
+        onDismiss()
+    }
+
     Box(
         modifier = modifier
             .padding(horizontal = Daw.space.lg)
@@ -219,13 +231,6 @@ private fun StatusBanner(
                 text = message,
                 style = Daw.type.label,
                 color = Daw.colors.inkOnDark
-            )
-            Spacer(modifier = Modifier.width(Daw.space.xs))
-            Text(
-                text = "[DISMISS]",
-                style = Daw.type.caption,
-                fontWeight = FontWeight.Bold,
-                color = Daw.colors.inkMuted
             )
         }
     }

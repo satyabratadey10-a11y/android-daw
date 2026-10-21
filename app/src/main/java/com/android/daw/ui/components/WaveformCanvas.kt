@@ -55,8 +55,7 @@ fun WaveformCanvas(
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val originInsetPx = originInsetDp.toPx()
-        val pyramid = clip.waveformPeakData ?: return@Canvas
-        val sampleRate = pyramid.sampleRate
+        val sampleRate = clip.waveformPeakData?.sampleRate ?: 48000
         if (sampleRate <= 0) return@Canvas
 
         val clipStartSec = clip.startFrame.toFloat() / sampleRate
@@ -121,13 +120,45 @@ fun WaveformCanvas(
             )
         }
 
-        // 4. Waveform Area below Title Strip
-        val waveTop = containerPaddingY + titleStripHeight
-        val waveHeight = innerHeight - titleStripHeight
-        if (waveHeight <= 2f) return@Canvas
+        // 4. Content Area below Title Strip
+        val contentTop = containerPaddingY + titleStripHeight
+        val contentHeight = innerHeight - titleStripHeight
+        if (contentHeight <= 2f) return@Canvas
 
-        val yMid = waveTop + (waveHeight / 2f)
-        val halfHeight = waveHeight / 2f
+        if (clip.isMidi) {
+            // Render MIDI notes preview inside clip
+            val noteDrawColor = if (isMuted) inkMuted.copy(alpha = 0.38f) else trackColor.copy(alpha = 0.85f)
+            val noteRadius = 1.5.dp.toPx()
+            val noteHeight = 3.dp.toPx()
+            val pitches = clip.notes.map { it.pitch }
+            val minP = (pitches.minOrNull() ?: 48).coerceAtLeast(0)
+            val maxP = (pitches.maxOrNull() ?: (minP + 12)).coerceAtLeast(minP + 1)
+            val pitchRange = maxOf(12, maxP - minP)
+
+            clip.notes.forEach { note ->
+                val noteStartSec = note.startFrame.toFloat() / sampleRate
+                val noteDurSec = note.durationFrames.toFloat() / sampleRate
+                val nX = clipStartPx + (noteStartSec * pixelsPerSecond)
+                val nW = max(3f, noteDurSec * pixelsPerSecond)
+
+                val normPitch = (note.pitch - minP).toFloat() / pitchRange
+                val nY = contentTop + (contentHeight - noteHeight) * (1f - normPitch.coerceIn(0f, 1f))
+
+                if (nX + nW >= clipStartPx && nX <= clipStartPx + clipWidthPx) {
+                    drawRoundRect(
+                        color = noteDrawColor,
+                        topLeft = Offset(nX, nY),
+                        size = Size(nW, noteHeight),
+                        cornerRadius = CornerRadius(noteRadius, noteRadius)
+                    )
+                }
+            }
+            return@Canvas
+        }
+
+        val pyramid = clip.waveformPeakData ?: return@Canvas
+        val yMid = contentTop + (contentHeight / 2f)
+        val halfHeight = contentHeight / 2f
 
         // 5. Select Optimal Decimation Pyramid Level
         val level = pyramid.selectOptimalLevel(pixelsPerSecond)

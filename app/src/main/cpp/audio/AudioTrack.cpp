@@ -31,10 +31,33 @@ void AudioTrack::prepare(size_t max_buffer_size, float sample_rate) {
 void AudioTrack::setSampleRate(float sample_rate) {
     if (sample_rate <= 0.0f) return;
     sample_rate_ = sample_rate;
+    sub_synth_.setSampleRate(sample_rate_);
+    drum_synth_.setSampleRate(sample_rate_);
     volume_smoother_.setSampleRate(sample_rate_);
     panner_.setSampleRate(sample_rate_);
     parametric_eq_.setSampleRate(sample_rate_);
     delay_.setSampleRate(sample_rate_);
+}
+
+void AudioTrack::noteOn(int note, float velocity) noexcept {
+    if (track_type_ == TrackType::SUB_SYNTH) {
+        sub_synth_.noteOn(note, velocity);
+    } else if (track_type_ == TrackType::DRUM_KIT) {
+        drum_synth_.noteOn(note, velocity);
+    }
+}
+
+void AudioTrack::noteOff(int note) noexcept {
+    if (track_type_ == TrackType::SUB_SYNTH) {
+        sub_synth_.noteOff(note);
+    } else if (track_type_ == TrackType::DRUM_KIT) {
+        drum_synth_.noteOff(note);
+    }
+}
+
+void AudioTrack::allNotesOff() noexcept {
+    sub_synth_.allNotesOff();
+    drum_synth_.allNotesOff();
 }
 
 void AudioTrack::addClip(AudioClip clip) {
@@ -127,10 +150,38 @@ void AudioTrack::renderBlock(int64_t timeline_frame, size_t num_frames,
     std::fill_n(track_buf_l_.data(), num_frames, 0.0f);
     std::fill_n(track_buf_r_.data(), num_frames, 0.0f);
 
-    // 2. Sum intersecting timeline clips into track buffers
-    for (const auto& clip : clips_) {
-        if (clip.intersects(timeline_frame, num_frames)) {
-            clip.renderBlock(timeline_frame, num_frames, track_buf_l_.data(), track_buf_r_.data());
+    // 2. Render Track Source: Instrument Synth OR Audio Clips
+    if (track_type_ == TrackType::SUB_SYNTH || track_type_ == TrackType::DRUM_KIT) {
+        // Schedule MIDI notes across intersecting timeline clips
+        for (const auto& clip : clips_) {
+            if (clip.isMidi() && clip.intersects(timeline_frame, num_frames)) {
+                for (const auto& note : clip.getMidiNotes()) {
+                    const int64_t note_start_timeline = clip.getStartFrame() + note.start_frame;
+                    const int64_t note_end_timeline = note_start_timeline + note.duration_frames;
+
+                    if (note_start_timeline >= timeline_frame &&
+                        note_start_timeline < timeline_frame + static_cast<int64_t>(num_frames)) {
+                        noteOn(note.note, note.velocity);
+                    }
+                    if (note_end_timeline >= timeline_frame &&
+                        note_end_timeline < timeline_frame + static_cast<int64_t>(num_frames)) {
+                        noteOff(note.note);
+                    }
+                }
+            }
+        }
+
+        if (track_type_ == TrackType::SUB_SYNTH) {
+            sub_synth_.renderBlock(track_buf_l_.data(), track_buf_r_.data(), num_frames);
+        } else {
+            drum_synth_.renderBlock(track_buf_l_.data(), track_buf_r_.data(), num_frames);
+        }
+    } else {
+        // Sum intersecting audio clips
+        for (const auto& clip : clips_) {
+            if (clip.intersects(timeline_frame, num_frames)) {
+                clip.renderBlock(timeline_frame, num_frames, track_buf_l_.data(), track_buf_r_.data());
+            }
         }
     }
 

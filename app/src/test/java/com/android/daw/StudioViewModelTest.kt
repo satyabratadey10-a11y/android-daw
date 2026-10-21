@@ -441,4 +441,137 @@ class StudioViewModelTest {
         assertFalse(viewModel.uiState.value.isExporting)
         assertEquals("Export cancelled.", viewModel.uiState.value.statusMessage)
     }
+
+    @Test
+    fun testInstrumentTrackCreation() = runTest(testDispatcher) {
+        // Add Sub Synth Track
+        viewModel.onAction(
+            StudioAction.AddInstrumentTrack("Sub Synth", com.android.daw.viewmodel.TrackInstrumentType.SUB_SYNTH)
+        )
+        advanceUntilIdle()
+        assertEquals(1, viewModel.uiState.value.tracks.size)
+        val synthTrack = viewModel.uiState.value.tracks.first()
+        assertEquals(com.android.daw.viewmodel.TrackInstrumentType.SUB_SYNTH, synthTrack.instrumentType)
+        assertTrue(synthTrack.name.startsWith("Sub Synth"))
+
+        // Add Drum Kit Track
+        viewModel.onAction(
+            StudioAction.AddInstrumentTrack("Drum Kit", com.android.daw.viewmodel.TrackInstrumentType.DRUM_KIT)
+        )
+        advanceUntilIdle()
+        assertEquals(2, viewModel.uiState.value.tracks.size)
+        val drumTrack = viewModel.uiState.value.tracks.last()
+        assertEquals(com.android.daw.viewmodel.TrackInstrumentType.DRUM_KIT, drumTrack.instrumentType)
+        assertTrue(drumTrack.name.startsWith("Drum Kit"))
+    }
+
+    @Test
+    fun testPianoRollNoteEditingAndUndoRedo() = runTest(testDispatcher) {
+        // 1. Add Sub Synth Track
+        viewModel.onAction(
+            StudioAction.AddInstrumentTrack("Lead Synth", com.android.daw.viewmodel.TrackInstrumentType.SUB_SYNTH)
+        )
+        advanceUntilIdle()
+        val trackId = viewModel.uiState.value.tracks.first().trackId
+
+        // 2. Create MIDI Clip
+        viewModel.onAction(
+            StudioAction.CreateMidiClip(trackId = trackId, startFrame = 0L, durationFrames = 48000L * 4L, name = "Pattern 1")
+        )
+        advanceUntilIdle()
+        val clipId = viewModel.uiState.value.tracks.first().clips.first().clipId
+
+        // 3. Open Piano Roll
+        viewModel.onAction(StudioAction.OpenPianoRoll(trackId = trackId, clipId = clipId))
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.isPianoRollOpen)
+        assertEquals(clipId, viewModel.uiState.value.pianoRollClipId)
+
+        // 4. Add MIDI Note (C4 = 60)
+        viewModel.onAction(
+            StudioAction.AddMidiNote(
+                trackId = trackId,
+                clipId = clipId,
+                pitch = 60,
+                startFrame = 0L,
+                durationFrames = 12000L,
+                velocity = 0.85f
+            )
+        )
+        advanceUntilIdle()
+        val notesAfterAdd = viewModel.uiState.value.tracks.first().clips.first().notes
+        assertEquals(1, notesAfterAdd.size)
+        assertEquals(60, notesAfterAdd.first().pitch)
+        val noteId = notesAfterAdd.first().id
+
+        // 5. Update MIDI Note (Transpose to D4 = 62)
+        viewModel.onAction(
+            StudioAction.UpdateMidiNote(
+                trackId = trackId,
+                clipId = clipId,
+                noteId = noteId,
+                newPitch = 62,
+                newStartFrame = 0L,
+                newDurationFrames = 12000L,
+                velocity = 0.9f
+            )
+        )
+        advanceUntilIdle()
+        val noteAfterUpdate = viewModel.uiState.value.tracks.first().clips.first().notes.first()
+        assertEquals(62, noteAfterUpdate.pitch)
+        assertEquals(0.9f, noteAfterUpdate.velocity, 1e-4f)
+
+        // 6. Test Undo (Should revert pitch to 60)
+        assertTrue(viewModel.uiState.value.canUndo)
+        viewModel.onAction(StudioAction.Undo)
+        advanceUntilIdle()
+        val noteAfterUndo = viewModel.uiState.value.tracks.first().clips.first().notes.first()
+        assertEquals(60, noteAfterUndo.pitch)
+
+        // 7. Test Redo (Should re-apply pitch 62)
+        assertTrue(viewModel.uiState.value.canRedo)
+        viewModel.onAction(StudioAction.Redo)
+        advanceUntilIdle()
+        val noteAfterRedo = viewModel.uiState.value.tracks.first().clips.first().notes.first()
+        assertEquals(62, noteAfterRedo.pitch)
+
+        // 8. Delete Note
+        viewModel.onAction(StudioAction.DeleteMidiNote(trackId, clipId, noteId))
+        advanceUntilIdle()
+        assertEquals(0, viewModel.uiState.value.tracks.first().clips.first().notes.size)
+
+        // 9. Close Piano Roll
+        viewModel.onAction(StudioAction.ClosePianoRoll)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isPianoRollOpen)
+        assertNull(viewModel.uiState.value.pianoRollClipId)
+    }
+
+    @Test
+    fun testPianoRollToolAndSnapToggles() = runTest(testDispatcher) {
+        // Change Tool
+        viewModel.onAction(StudioAction.SetPianoRollTool(com.android.daw.viewmodel.PianoRollTool.ERASE))
+        advanceUntilIdle()
+        assertEquals(com.android.daw.viewmodel.PianoRollTool.ERASE, viewModel.uiState.value.pianoRollTool)
+
+        // Change Snap
+        viewModel.onAction(StudioAction.SetPianoRollSnap(com.android.daw.viewmodel.PianoRollSnap.THIRTY_SECOND))
+        advanceUntilIdle()
+        assertEquals(com.android.daw.viewmodel.PianoRollSnap.THIRTY_SECOND, viewModel.uiState.value.pianoRollSnap)
+
+        // Toggle Velocity Lane
+        assertFalse(viewModel.uiState.value.isVelocityLaneVisible)
+        viewModel.onAction(StudioAction.ToggleVelocityLane)
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.isVelocityLaneVisible)
+        viewModel.onAction(StudioAction.ToggleVelocityLane)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.isVelocityLaneVisible)
+
+        // Toggle Follow Playhead
+        assertTrue(viewModel.uiState.value.followPlayhead)
+        viewModel.onAction(StudioAction.ToggleFollowPlayhead)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.followPlayhead)
+    }
 }

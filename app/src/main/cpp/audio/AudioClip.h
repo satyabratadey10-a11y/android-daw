@@ -10,9 +10,17 @@
 namespace daw {
 namespace audio {
 
+struct MidiNote {
+    int id{0};
+    int note{60};
+    int64_t start_frame{0};
+    int64_t duration_frames{0};
+    float velocity{0.8f};
+};
+
 /**
- * AudioClip: Represents an audio region placed on the timeline.
- * Supports non-destructive start offset, duration trimming, gain, and mute.
+ * AudioClip: Represents an audio or MIDI region placed on the timeline.
+ * Supports non-destructive start offset, duration trimming, gain, mute, and note sequencing.
  */
 class AudioClip {
 public:
@@ -24,6 +32,16 @@ public:
 
     // Set audio directly from memory buffers
     void setAudioData(std::vector<float> left, std::vector<float> right);
+
+    // MIDI Support
+    [[nodiscard]] bool isMidi() const noexcept { return is_midi_; }
+    void setMidi(bool is_midi) noexcept { is_midi_ = is_midi; }
+
+    void addMidiNote(const MidiNote& note) { midi_notes_.push_back(note); }
+    void clearMidiNotes() noexcept { midi_notes_.clear(); }
+    void setMidiNotes(std::vector<MidiNote> notes) { midi_notes_ = std::move(notes); }
+    [[nodiscard]] const std::vector<MidiNote>& getMidiNotes() const noexcept { return midi_notes_; }
+    [[nodiscard]] std::vector<MidiNote>& getMidiNotes() noexcept { return midi_notes_; }
 
     // Test timeline intersection with [timeline_frame, timeline_frame + num_frames)
     [[nodiscard]] bool intersects(int64_t timeline_frame, size_t num_frames) const noexcept;
@@ -75,6 +93,9 @@ private:
     size_t source_frames_{0};
     std::vector<float> audio_left_;
     std::vector<float> audio_right_;
+
+    bool is_midi_{false};
+    std::vector<MidiNote> midi_notes_;
 };
 
 } // namespace audio

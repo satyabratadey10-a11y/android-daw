@@ -96,4 +96,23 @@ sealed interface StudioAction {
     data class StartExport(val bitDepth: Int = 16) : StudioAction
     data object CancelExport : StudioAction
     data object DismissStatusMessage : StudioAction
+
+    // --- Piano Roll & MIDI Editing Intents ---
+    data class AddInstrumentTrack(val name: String, val instrumentType: TrackInstrumentType) : StudioAction
+    data class OpenPianoRoll(val trackId: Int, val clipId: Int) : StudioAction
+    data object ClosePianoRoll : StudioAction
+    data class SetPianoRollTool(val tool: PianoRollTool) : StudioAction
+    data class SetPianoRollSnap(val snap: PianoRollSnap) : StudioAction
+    data object ToggleVelocityLane : StudioAction
+    data class AddMidiNote(val trackId: Int, val clipId: Int, val pitch: Int, val startFrame: Long, val durationFrames: Long, val velocity: Float = 0.8f) : StudioAction
+    data class UpdateMidiNote(val trackId: Int, val clipId: Int, val noteId: Int, val newPitch: Int, val newStartFrame: Long, val newDurationFrames: Long, val velocity: Float = 0.8f) : StudioAction
+    data class DeleteMidiNote(val trackId: Int, val clipId: Int, val noteId: Int) : StudioAction
+    data class AuditionNoteOn(val trackId: Int, val pitch: Int, val velocity: Float = 0.8f) : StudioAction
+    data class AuditionNoteOff(val trackId: Int, val pitch: Int) : StudioAction
+    data class CreateMidiClip(val trackId: Int, val startFrame: Long, val durationFrames: Long, val name: String = "MIDI Clip") : StudioAction
+
+    // --- Undo / Redo & Follow ---
+    data object Undo : StudioAction
+    data object Redo : StudioAction
+    data object ToggleFollowPlayhead : StudioAction
 }

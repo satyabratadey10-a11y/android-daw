@@ -35,6 +35,8 @@ set(DAW_SOURCES
     dsp/MasterLimiter.cpp
     dsp/Panner.cpp
     dsp/ParametricEq.cpp
+    dsp/SubSynth.cpp
+    dsp/DrumKitSynth.cpp
     backend/AAudioStreamManager.cpp
     jni/JniBridge.cpp
 )

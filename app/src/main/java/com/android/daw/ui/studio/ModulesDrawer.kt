@@ -46,11 +46,14 @@ import com.android.daw.ui.theme.Layer
 import com.android.daw.viewmodel.StudioAction
 import com.android.daw.viewmodel.StudioUiState
 
+import com.android.daw.viewmodel.TrackInstrumentType
+
 data class DawModuleItem(
     val id: String,
     val name: String,
     val category: String,
-    val isInstrument: Boolean
+    val isInstrument: Boolean,
+    val instrumentType: TrackInstrumentType? = null
 )
 
 /**
@@ -75,16 +78,12 @@ fun ModulesDrawer(
 
     val modules = remember {
         listOf(
-            DawModuleItem("1", "Audio Track", "RECORDER", false),
-            DawModuleItem("2", "DirectWave Sampler", "SAMPLER", true),
-            DawModuleItem("3", "MiniSynth", "SYNTHESIZER", true),
-            DawModuleItem("4", "GMS Synth", "SYNTHESIZER", true),
-            DawModuleItem("5", "Drum Sequencer", "DRUMS", true),
-            DawModuleItem("6", "Transistor Bass", "SYNTHESIZER", true),
-            DawModuleItem("7", "Parametric EQ", "EFFECT", false),
-            DawModuleItem("8", "Stereo Delay", "EFFECT", false),
-            DawModuleItem("9", "Master Limiter", "EFFECT", false),
-            DawModuleItem("10", "Chorus / Flanger", "EFFECT", false)
+            DawModuleItem("1", "Audio Track", "RECORDER", false, null),
+            DawModuleItem("2", "Sub Synth", "SYNTHESIZER", true, TrackInstrumentType.SUB_SYNTH),
+            DawModuleItem("3", "Drum Kit", "DRUMS", true, TrackInstrumentType.DRUM_KIT),
+            DawModuleItem("4", "Parametric EQ", "EFFECT", false, null),
+            DawModuleItem("5", "Stereo Delay", "EFFECT", false, null),
+            DawModuleItem("6", "Master Limiter", "EFFECT", false, null)
         )
     }
 
@@ -186,7 +185,11 @@ fun ModulesDrawer(
                                 .fillMaxWidth()
                                 .height(Daw.space.rowHeight)
                                 .clickable {
-                                    onAction(StudioAction.AddTrack(item.name))
+                                    if (item.instrumentType != null) {
+                                        onAction(StudioAction.AddInstrumentTrack(item.name, item.instrumentType))
+                                    } else {
+                                        onAction(StudioAction.AddTrack(item.name))
+                                    }
                                     onDismiss()
                                 }
                                 .padding(horizontal = Daw.space.lg),

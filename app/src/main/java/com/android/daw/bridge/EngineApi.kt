@@ -34,9 +34,12 @@ interface EngineApi {
     suspend fun removeClip(trackId: Int, clipId: Int): Boolean
 
     // MIDI & Audition
-    suspend fun noteOn(trackId: Int, pitch: Int, velocity: Int)
+    suspend fun noteOn(trackId: Int, pitch: Int, velocity: Float)
     suspend fun noteOff(trackId: Int, pitch: Int)
     suspend fun allNotesOff(trackId: Int)
+    suspend fun setTrackType(trackId: Int, trackType: Int): Boolean
+    suspend fun loadMidiClip(trackId: Int, clipId: Int, name: String, startOffsetFrames: Long, durationFrames: Long): Boolean
+    suspend fun setClipMidiNotes(trackId: Int, clipId: Int, ids: IntArray, pitches: IntArray, startFrames: LongArray, durations: LongArray, velocities: FloatArray): Boolean
 
     // DSP & Limiter
     suspend fun setTrackEqBand(trackId: Int, bandIndex: Int, filterType: Int, freqHz: Float, gainDb: Float, qFactor: Float): Boolean

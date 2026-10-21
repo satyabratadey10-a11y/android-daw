@@ -303,6 +303,69 @@ static jfloat jni_nativeGetCpuUsage(JNIEnv* /*env*/, jobject /*thiz*/) {
     return 0.0f;
 }
 
+static void jni_nativeSetTrackType(JNIEnv* /*env*/, jobject /*thiz*/, jint trackId, jint trackType) {
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    if (g_audio_engine) {
+        g_audio_engine->setTrackType(trackId, trackType);
+    }
+}
+
+static void jni_nativeSendNoteOn(JNIEnv* /*env*/, jobject /*thiz*/, jint trackId, jint note, jfloat velocity) {
+    if (g_audio_engine) {
+        g_audio_engine->sendNoteOn(trackId, note, velocity);
+    }
+}
+
+static void jni_nativeSendNoteOff(JNIEnv* /*env*/, jobject /*thiz*/, jint trackId, jint note) {
+    if (g_audio_engine) {
+        g_audio_engine->sendNoteOff(trackId, note);
+    }
+}
+
+static jboolean jni_nativeLoadMidiClip(JNIEnv* env, jobject /*thiz*/, jint trackId, jint clipId, jstring name, jlong startOffsetFrames, jlong durationFrames) {
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    if (!g_audio_engine) return JNI_FALSE;
+    std::string clipName = jstringToString(env, name);
+    return g_audio_engine->loadMidiClip(trackId, clipId, clipName, static_cast<int64_t>(startOffsetFrames), static_cast<int64_t>(durationFrames)) ? JNI_TRUE : JNI_FALSE;
+}
+
+static jboolean jni_nativeSetClipMidiNotes(JNIEnv* env, jobject /*thiz*/, jint trackId, jint clipId,
+                                          jintArray ids, jintArray notes, jlongArray startFrames, jlongArray durations, jfloatArray velocities) {
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    if (!g_audio_engine || !ids || !notes || !startFrames || !durations || !velocities) return JNI_FALSE;
+
+    const jsize count = env->GetArrayLength(ids);
+    if (count == 0) {
+        return g_audio_engine->setClipMidiNotes(trackId, clipId, {}) ? JNI_TRUE : JNI_FALSE;
+    }
+
+    jint* pIds = env->GetIntArrayElements(ids, nullptr);
+    jint* pNotes = env->GetIntArrayElements(notes, nullptr);
+    jlong* pStarts = env->GetLongArrayElements(startFrames, nullptr);
+    jlong* pDurs = env->GetLongArrayElements(durations, nullptr);
+    jfloat* pVels = env->GetFloatArrayElements(velocities, nullptr);
+
+    std::vector<daw::audio::MidiNote> midiNotes;
+    midiNotes.reserve(count);
+    for (jsize i = 0; i < count; ++i) {
+        daw::audio::MidiNote n;
+        n.id = pIds[i];
+        n.note = pNotes[i];
+        n.start_frame = static_cast<int64_t>(pStarts[i]);
+        n.duration_frames = static_cast<int64_t>(pDurs[i]);
+        n.velocity = pVels[i];
+        midiNotes.push_back(n);
+    }
+
+    env->ReleaseIntArrayElements(ids, pIds, JNI_ABORT);
+    env->ReleaseIntArrayElements(notes, pNotes, JNI_ABORT);
+    env->ReleaseLongArrayElements(startFrames, pStarts, JNI_ABORT);
+    env->ReleaseLongArrayElements(durations, pDurs, JNI_ABORT);
+    env->ReleaseFloatArrayElements(velocities, pVels, JNI_ABORT);
+
+    return g_audio_engine->setClipMidiNotes(trackId, clipId, midiNotes) ? JNI_TRUE : JNI_FALSE;
+}
+
 // =============================================================================
 // Native Method Registration Table
 // =============================================================================
@@ -323,12 +386,17 @@ static const JNINativeMethod g_native_methods[] = {
     {"nativeSetTrackMute", "(IZ)V", reinterpret_cast<void*>(jni_nativeSetTrackMute)},
     {"nativeSetTrackSolo", "(IZ)V", reinterpret_cast<void*>(jni_nativeSetTrackSolo)},
     {"nativeSetTrackArmed", "(IZ)V", reinterpret_cast<void*>(jni_nativeSetTrackArmed)},
+    {"nativeSetTrackType", "(II)V", reinterpret_cast<void*>(jni_nativeSetTrackType)},
+    {"nativeSendNoteOn", "(IIF)V", reinterpret_cast<void*>(jni_nativeSendNoteOn)},
+    {"nativeSendNoteOff", "(II)V", reinterpret_cast<void*>(jni_nativeSendNoteOff)},
     {"nativeSetTrackEqBand", "(IIFFFF)V", reinterpret_cast<void*>(jni_nativeSetTrackEqBand)},
     {"nativeSetTrackDelay", "(IFFF)V", reinterpret_cast<void*>(jni_nativeSetTrackDelay)},
     {"nativeSetMasterLimiter", "(FFF)V", reinterpret_cast<void*>(jni_nativeSetMasterLimiter)},
     {"nativeGetPlaybackPositionFrames", "()J", reinterpret_cast<void*>(jni_nativeGetPlaybackPositionFrames)},
     {"nativeGetMeteringData", "(Ljava/nio/ByteBuffer;I)V", reinterpret_cast<void*>(jni_nativeGetMeteringData)},
     {"nativeLoadClip", "(IILjava/lang/String;J)Z", reinterpret_cast<void*>(jni_nativeLoadClip)},
+    {"nativeLoadMidiClip", "(IILjava/lang/String;JJ)Z", reinterpret_cast<void*>(jni_nativeLoadMidiClip)},
+    {"nativeSetClipMidiNotes", "(II[I[I[J[J[F)Z", reinterpret_cast<void*>(jni_nativeSetClipMidiNotes)},
     {"nativeMoveClip", "(IIJ)Z", reinterpret_cast<void*>(jni_nativeMoveClip)},
     {"nativeRemoveClip", "(II)Z", reinterpret_cast<void*>(jni_nativeRemoveClip)},
     {"nativeStartRecording", "(ILjava/lang/String;)Z", reinterpret_cast<void*>(jni_nativeStartRecording)},
@@ -513,6 +581,27 @@ JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeS
 
 JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeStopRecording(JNIEnv* env, jobject thiz, jint trackId) {
     jni_nativeStopRecording(env, thiz, trackId);
+}
+
+JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSetTrackType(JNIEnv* env, jobject thiz, jint trackId, jint trackType) {
+    jni_nativeSetTrackType(env, thiz, trackId, trackType);
+}
+
+JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSendNoteOn(JNIEnv* env, jobject thiz, jint trackId, jint note, jfloat velocity) {
+    jni_nativeSendNoteOn(env, thiz, trackId, note, velocity);
+}
+
+JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSendNoteOff(JNIEnv* env, jobject thiz, jint trackId, jint note) {
+    jni_nativeSendNoteOff(env, thiz, trackId, note);
+}
+
+JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeLoadMidiClip(JNIEnv* env, jobject thiz, jint trackId, jint clipId, jstring name, jlong startOffsetFrames, jlong durationFrames) {
+    return jni_nativeLoadMidiClip(env, thiz, trackId, clipId, name, startOffsetFrames, durationFrames);
+}
+
+JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSetClipMidiNotes(JNIEnv* env, jobject thiz, jint trackId, jint clipId,
+                                                                                               jintArray ids, jintArray notes, jlongArray startFrames, jlongArray durations, jfloatArray velocities) {
+    return jni_nativeSetClipMidiNotes(env, thiz, trackId, clipId, ids, notes, startFrames, durations, velocities);
 }
 
 JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeRenderMixdown(JNIEnv* env, jobject thiz, jstring outputWavPath, jint bitDepth, jlong totalFrames) {

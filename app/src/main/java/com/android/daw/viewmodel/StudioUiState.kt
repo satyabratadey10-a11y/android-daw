@@ -206,19 +206,51 @@ class WaveformDecimationPyramid(
 }
 
 @Immutable
+data class MidiNote(
+    val id: Int,
+    val pitch: Int, // 0..127 (e.g. 60 = Middle C / C4)
+    val startFrame: Long,
+    val durationFrames: Long,
+    val velocity: Float = 0.8f
+)
+
+enum class TrackInstrumentType(val id: Int) {
+    AUDIO(0),
+    SUB_SYNTH(1),
+    DRUM_KIT(2)
+}
+
+enum class PianoRollTool {
+    DRAW,
+    SELECT,
+    ERASE
+}
+
+enum class PianoRollSnap(val label: String, val fractionOfBeat: Double) {
+    OFF("Off", 0.0),
+    QUARTER("1/4", 1.0),
+    EIGHTH("1/8", 0.5),
+    SIXTEENTH("1/16", 0.25),
+    THIRTY_SECOND("1/32", 0.125)
+}
+
+@Immutable
 data class AudioClipUiModel(
     val clipId: Int,
     val trackId: Int,
     val name: String,
     val startFrame: Long,
     val durationFrames: Long,
-    val waveformPeakData: WaveformDecimationPyramid? = null
+    val waveformPeakData: WaveformDecimationPyramid? = null,
+    val isMidi: Boolean = false,
+    val notes: List<MidiNote> = emptyList()
 )
 
 @Immutable
 data class TrackUiModel(
     val trackId: Int,
     val name: String,
+    val instrumentType: TrackInstrumentType = TrackInstrumentType.AUDIO,
     val colorHex: Long = 0xFF00E5FF,
     val volumeLinear: Float = 1.0f,
     val pan: Float = 0.0f, // -1.0f (L) to +1.0f (R)
@@ -287,6 +319,13 @@ data class StudioUiState(
     val isMixerOpen: Boolean = false,
     val isInstrumentPanelOpen: Boolean = false,
     val isPianoRollOpen: Boolean = false,
+    val pianoRollClipId: Int? = null,
+    val pianoRollTool: PianoRollTool = PianoRollTool.DRAW,
+    val pianoRollSnap: PianoRollSnap = PianoRollSnap.SIXTEENTH,
+    val isVelocityLaneVisible: Boolean = false,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
+    val followPlayhead: Boolean = true,
     val isProjectDrawerOpen: Boolean = false,
     val isModulesDrawerOpen: Boolean = false,
     val isBpmDialOpen: Boolean = false,

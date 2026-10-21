@@ -59,6 +59,9 @@ class StudioViewModel(
     // IEC 60268-10 PPM Ballistics tracking per channel (trackId -> smoothedDb)
     private val meterBallisticsMap = mutableMapOf<Int, BallisticsState>()
 
+    // Global 200-step undo/redo history manager (Section 5)
+    private val undoRedoManager = UndoRedoManager(200)
+
     init {
         if (enableTelemetryLoop) {
             startTelemetryLoop()
@@ -141,6 +144,27 @@ class StudioViewModel(
                 is StudioAction.StartExport -> handleStartExport(action.bitDepth)
                 StudioAction.CancelExport -> handleCancelExport()
                 StudioAction.DismissStatusMessage -> handleDismissStatusMessage()
+
+                // --- Piano Roll & MIDI Intents (Milestone 2) ---
+                is StudioAction.AddInstrumentTrack -> handleAddInstrumentTrack(action.name, action.instrumentType)
+                is StudioAction.OpenPianoRoll -> handleOpenPianoRoll(action.trackId, action.clipId)
+                StudioAction.ClosePianoRoll -> handleClosePianoRoll()
+                is StudioAction.SetPianoRollTool -> handleSetPianoRollTool(action.tool)
+                is StudioAction.SetPianoRollSnap -> handleSetPianoRollSnap(action.snap)
+                StudioAction.ToggleVelocityLane -> handleToggleVelocityLane()
+                is StudioAction.AddMidiNote -> handleAddMidiNote(
+                    action.trackId, action.clipId, action.pitch, action.startFrame, action.durationFrames, action.velocity
+                )
+                is StudioAction.UpdateMidiNote -> handleUpdateMidiNote(
+                    action.trackId, action.clipId, action.noteId, action.newPitch, action.newStartFrame, action.newDurationFrames, action.velocity
+                )
+                is StudioAction.DeleteMidiNote -> handleDeleteMidiNote(action.trackId, action.clipId, action.noteId)
+                is StudioAction.AuditionNoteOn -> handleAuditionNoteOn(action.trackId, action.pitch, action.velocity)
+                is StudioAction.AuditionNoteOff -> handleAuditionNoteOff(action.trackId, action.pitch)
+                is StudioAction.CreateMidiClip -> handleCreateMidiClip(action.trackId, action.startFrame, action.durationFrames, action.name)
+                StudioAction.Undo -> handleUndo()
+                StudioAction.Redo -> handleRedo()
+                StudioAction.ToggleFollowPlayhead -> handleToggleFollowPlayhead()
             }
         }
     }
@@ -211,6 +235,7 @@ class StudioViewModel(
 
     private suspend fun handleAddTrack(name: String) = withContext(defaultDispatcher) {
         val currentTracks = _uiState.value.tracks
+        undoRedoManager.pushState(currentTracks)
         val nextId = (currentTracks.maxOfOrNull { it.trackId } ?: 0) + 1
         val colorHex = TRACK_PALETTE_HEX[(nextId - 1) % TRACK_PALETTE_HEX.size]
 
@@ -227,12 +252,15 @@ class StudioViewModel(
             state.copy(
                 tracks = state.tracks + newTrack,
                 selectedTrackId = nextId,
+                canUndo = undoRedoManager.canUndo,
+                canRedo = undoRedoManager.canRedo,
                 statusMessage = "Added track: ${newTrack.name}"
             )
         }
     }
 
     private suspend fun handleRemoveTrack(trackId: Int) = withContext(defaultDispatcher) {
+        undoRedoManager.pushState(_uiState.value.tracks)
         withNativeEngine { it.removeTrack(trackId) }
         _uiState.update { state ->
             val trackToRemove = state.tracks.find { it.trackId == trackId }
@@ -248,6 +276,8 @@ class StudioViewModel(
                 tracks = updatedTracks,
                 selectedTrackId = newSelected,
                 selectedClipId = newSelectedClip,
+                canUndo = undoRedoManager.canUndo,
+                canRedo = undoRedoManager.canRedo,
                 statusMessage = "Removed track #$trackId"
             )
         }
@@ -358,7 +388,16 @@ class StudioViewModel(
     }
 
     private fun handleTogglePianoRollPanel() {
-        _uiState.update { it.copy(isPianoRollOpen = !it.isPianoRollOpen) }
+        _uiState.update { state ->
+            val newOpen = !state.isPianoRollOpen
+            val targetTrack = state.selectedTrack ?: state.tracks.firstOrNull { it.instrumentType != TrackInstrumentType.AUDIO }
+            val targetClip = targetTrack?.clips?.firstOrNull { it.isMidi } ?: targetTrack?.clips?.firstOrNull()
+            state.copy(
+                isPianoRollOpen = newOpen,
+                selectedTrackId = targetTrack?.trackId ?: state.selectedTrackId,
+                pianoRollClipId = if (newOpen) targetClip?.clipId else null
+            )
+        }
     }
 
     private fun handleToggleProjectDrawer() {
@@ -403,6 +442,7 @@ class StudioViewModel(
             "DELETE" -> {
                 val state = _uiState.value
                 val foundTrack = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
+                undoRedoManager.pushState(state.tracks)
                 if (foundTrack != null) {
                     viewModelScope.launch(defaultDispatcher) {
                         withNativeEngine { it.removeClip(foundTrack.trackId, clipId) }
@@ -414,29 +454,84 @@ class StudioViewModel(
                             track.copy(clips = track.clips.filter { it.clipId != clipId })
                         },
                         selectedClipId = null,
+                        canUndo = undoRedoManager.canUndo,
+                        canRedo = undoRedoManager.canRedo,
                         isClipMenuOpen = false
                     )
                 }
             }
             "COPY" -> {
-                _uiState.update { state ->
-                    val foundTrack = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
-                    val foundClip = foundTrack?.clips?.find { it.clipId == clipId }
-                    if (foundTrack != null && foundClip != null) {
-                        val newClip = foundClip.copy(
-                            clipId = (state.tracks.flatMap { it.clips }.maxOfOrNull { it.clipId } ?: 0) + 1,
-                            name = "${foundClip.name} (Copy)",
-                            startFrame = foundClip.startFrame + foundClip.durationFrames
-                        )
-                        state.copy(
-                            tracks = state.tracks.map { tr ->
+                val state = _uiState.value
+                val foundTrack = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
+                val foundClip = foundTrack?.clips?.find { it.clipId == clipId }
+                if (foundTrack != null && foundClip != null) {
+                    undoRedoManager.pushState(state.tracks)
+                    val newClipId = (state.tracks.flatMap { it.clips }.maxOfOrNull { it.clipId } ?: 0) + 1
+                    val newClip = foundClip.copy(
+                        clipId = newClipId,
+                        name = "${foundClip.name} (Copy)",
+                        startFrame = foundClip.startFrame + foundClip.durationFrames
+                    )
+                    if (newClip.isMidi) {
+                        viewModelScope.launch(defaultDispatcher) {
+                            withNativeEngine {
+                                it.loadMidiClip(foundTrack.trackId, newClipId, newClip.name, newClip.startFrame, newClip.durationFrames)
+                            }
+                            syncClipNotesToNative(foundTrack.trackId, newClipId, newClip.notes)
+                        }
+                    }
+                    _uiState.update { s ->
+                        s.copy(
+                            tracks = s.tracks.map { tr ->
                                 if (tr.trackId == foundTrack.trackId) tr.copy(clips = tr.clips + newClip) else tr
                             },
                             selectedClipId = newClip.clipId,
+                            canUndo = undoRedoManager.canUndo,
+                            canRedo = undoRedoManager.canRedo,
                             isClipMenuOpen = false
                         )
-                    } else {
-                        state
+                    }
+                }
+            }
+            "EDIT" -> {
+                val state = _uiState.value
+                val foundTrack = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
+                if (foundTrack != null) {
+                    _uiState.update {
+                        it.copy(
+                            isPianoRollOpen = true,
+                            selectedTrackId = foundTrack.trackId,
+                            pianoRollClipId = clipId,
+                            isClipMenuOpen = false
+                        )
+                    }
+                }
+            }
+            "SNAP" -> {
+                val state = _uiState.value
+                val foundTrack = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
+                val foundClip = foundTrack?.clips?.find { it.clipId == clipId }
+                if (foundTrack != null && foundClip != null) {
+                    undoRedoManager.pushState(state.tracks)
+                    val framesPerBeat = (60.0 / state.bpm) * state.sampleRate
+                    val snapped = (((foundClip.startFrame + (framesPerBeat / 2)) / framesPerBeat) * framesPerBeat).toLong().coerceAtLeast(0L)
+                    viewModelScope.launch(defaultDispatcher) {
+                        withNativeEngine { it.moveClip(foundTrack.trackId, clipId, snapped) }
+                    }
+                    _uiState.update { s ->
+                        s.copy(
+                            tracks = s.tracks.map { tr ->
+                                if (tr.trackId == foundTrack.trackId) {
+                                    tr.copy(clips = tr.clips.map { c ->
+                                        if (c.clipId == clipId) c.copy(startFrame = snapped) else c
+                                    })
+                                } else tr
+                            },
+                            canUndo = undoRedoManager.canUndo,
+                            canRedo = undoRedoManager.canRedo,
+                            statusMessage = "Snapped clip to nearest beat",
+                            isClipMenuOpen = false
+                        )
                     }
                 }
             }
@@ -449,29 +544,31 @@ class StudioViewModel(
                 }
             }
             "SLICE" -> {
-                _uiState.update { state ->
-                    val foundTrack = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
-                    val foundClip = foundTrack?.clips?.find { it.clipId == clipId }
-                    if (foundTrack != null && foundClip != null && foundClip.durationFrames > 2000L) {
-                        val halfDuration = foundClip.durationFrames / 2
-                        val clip1 = foundClip.copy(durationFrames = halfDuration)
-                        val clip2 = foundClip.copy(
-                            clipId = (state.tracks.flatMap { it.clips }.maxOfOrNull { it.clipId } ?: 0) + 1,
-                            name = "${foundClip.name}_b",
-                            startFrame = foundClip.startFrame + halfDuration,
-                            durationFrames = foundClip.durationFrames - halfDuration
-                        )
-                        state.copy(
-                            tracks = state.tracks.map { tr ->
+                val state = _uiState.value
+                val foundTrack = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
+                val foundClip = foundTrack?.clips?.find { it.clipId == clipId }
+                if (foundTrack != null && foundClip != null && foundClip.durationFrames > 2000L) {
+                    undoRedoManager.pushState(state.tracks)
+                    val halfDuration = foundClip.durationFrames / 2
+                    val clip1 = foundClip.copy(durationFrames = halfDuration)
+                    val clip2 = foundClip.copy(
+                        clipId = (state.tracks.flatMap { it.clips }.maxOfOrNull { it.clipId } ?: 0) + 1,
+                        name = "${foundClip.name}_b",
+                        startFrame = foundClip.startFrame + halfDuration,
+                        durationFrames = foundClip.durationFrames - halfDuration
+                    )
+                    _uiState.update { s ->
+                        s.copy(
+                            tracks = s.tracks.map { tr ->
                                 if (tr.trackId == foundTrack.trackId) {
                                     tr.copy(clips = tr.clips.filter { it.clipId != clipId } + listOf(clip1, clip2))
                                 } else tr
                             },
                             selectedClipId = clip1.clipId,
+                            canUndo = undoRedoManager.canUndo,
+                            canRedo = undoRedoManager.canRedo,
                             isClipMenuOpen = false
                         )
-                    } else {
-                        state
                     }
                 }
             }
@@ -486,6 +583,7 @@ class StudioViewModel(
         val state = _uiState.value
         val track = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
         if (track != null) {
+            undoRedoManager.pushState(state.tracks)
             withNativeEngine { it.moveClip(track.trackId, clipId, targetFrame) }
             _uiState.update { s ->
                 s.copy(
@@ -497,7 +595,9 @@ class StudioViewModel(
                                 }
                             )
                         } else tr
-                    }
+                    },
+                    canUndo = undoRedoManager.canUndo,
+                    canRedo = undoRedoManager.canRedo
                 )
             }
         }
@@ -509,6 +609,7 @@ class StudioViewModel(
         val track = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
         val clip = track?.clips?.find { it.clipId == clipId }
         if (track != null && clip != null && playhead > clip.startFrame && playhead < (clip.startFrame + clip.durationFrames)) {
+            undoRedoManager.pushState(state.tracks)
             val dur1 = playhead - clip.startFrame
             val dur2 = clip.durationFrames - dur1
             val clip1 = clip.copy(durationFrames = dur1)
@@ -526,7 +627,9 @@ class StudioViewModel(
                             tr.copy(clips = tr.clips.filter { it.clipId != clipId } + listOf(clip1, clip2))
                         } else tr
                     },
-                    selectedClipId = clip1.clipId
+                    selectedClipId = clip1.clipId,
+                    canUndo = undoRedoManager.canUndo,
+                    canRedo = undoRedoManager.canRedo
                 )
             }
         }
@@ -538,6 +641,7 @@ class StudioViewModel(
         val state = _uiState.value
         val track = state.tracks.find { tr -> tr.clips.any { it.clipId == clipId } }
         if (track != null) {
+            undoRedoManager.pushState(state.tracks)
             _uiState.update { s ->
                 s.copy(
                     tracks = s.tracks.map { tr ->
@@ -548,7 +652,9 @@ class StudioViewModel(
                                 }
                             )
                         } else tr
-                    }
+                    },
+                    canUndo = undoRedoManager.canUndo,
+                    canRedo = undoRedoManager.canRedo
                 )
             }
         }
@@ -862,6 +968,297 @@ class StudioViewModel(
 
     private fun handleDismissStatusMessage() {
         _uiState.update { it.copy(statusMessage = null) }
+    }
+
+    // =========================================================================
+    // Piano Roll & Instrument Track Management (Milestone 2)
+    // =========================================================================
+
+    private suspend fun handleAddInstrumentTrack(name: String, instrumentType: TrackInstrumentType) = withContext(defaultDispatcher) {
+        val currentTracks = _uiState.value.tracks
+        undoRedoManager.pushState(currentTracks)
+        val nextId = (currentTracks.maxOfOrNull { it.trackId } ?: 0) + 1
+        val colorHex = TRACK_PALETTE_HEX[(nextId - 1) % TRACK_PALETTE_HEX.size]
+
+        val newTrack = TrackUiModel(
+            trackId = nextId,
+            name = "$name $nextId",
+            instrumentType = instrumentType,
+            colorHex = colorHex,
+            clips = emptyList()
+        )
+
+        withNativeEngine {
+            it.addTrack(nextId)
+            it.setTrackType(nextId, instrumentType.id)
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                tracks = state.tracks + newTrack,
+                selectedTrackId = nextId,
+                canUndo = undoRedoManager.canUndo,
+                canRedo = undoRedoManager.canRedo,
+                statusMessage = "Added instrument track: ${newTrack.name}"
+            )
+        }
+    }
+
+    private fun handleOpenPianoRoll(trackId: Int, clipId: Int) {
+        _uiState.update { state ->
+            state.copy(
+                isPianoRollOpen = true,
+                selectedTrackId = trackId,
+                pianoRollClipId = clipId,
+                isClipMenuOpen = false
+            )
+        }
+    }
+
+    private suspend fun handleClosePianoRoll() = withContext(defaultDispatcher) {
+        val currentTrackId = _uiState.value.selectedTrackId
+        if (currentTrackId != null) {
+            withNativeEngine { it.allNotesOff(currentTrackId) }
+        }
+        _uiState.update { state ->
+            state.copy(
+                isPianoRollOpen = false,
+                pianoRollClipId = null
+            )
+        }
+    }
+
+    private fun handleSetPianoRollTool(tool: PianoRollTool) {
+        _uiState.update { it.copy(pianoRollTool = tool) }
+    }
+
+    private fun handleSetPianoRollSnap(snap: PianoRollSnap) {
+        _uiState.update { it.copy(pianoRollSnap = snap) }
+    }
+
+    private fun handleToggleVelocityLane() {
+        _uiState.update { it.copy(isVelocityLaneVisible = !it.isVelocityLaneVisible) }
+    }
+
+    private suspend fun handleCreateMidiClip(
+        trackId: Int,
+        startFrame: Long,
+        durationFrames: Long,
+        name: String
+    ) = withContext(defaultDispatcher) {
+        val state = _uiState.value
+        undoRedoManager.pushState(state.tracks)
+        val clipId = (System.currentTimeMillis() % 100000).toInt() + 1000
+        val clampedStart = maxOf(0L, startFrame)
+        val clampedDuration = maxOf(1000L, durationFrames)
+
+        withNativeEngine {
+            it.loadMidiClip(trackId, clipId, name, clampedStart, clampedDuration)
+        }
+
+        val newClip = AudioClipUiModel(
+            clipId = clipId,
+            trackId = trackId,
+            name = name,
+            startFrame = clampedStart,
+            durationFrames = clampedDuration,
+            isMidi = true,
+            notes = emptyList()
+        )
+
+        _uiState.update { s ->
+            val newTotal = maxOf(s.totalFrames, clampedStart + clampedDuration)
+            s.copy(
+                totalFrames = newTotal,
+                selectedTrackId = trackId,
+                selectedClipId = clipId,
+                pianoRollClipId = clipId,
+                tracks = s.tracks.map { tr ->
+                    if (tr.trackId == trackId) {
+                        tr.copy(clips = tr.clips + newClip)
+                    } else tr
+                },
+                canUndo = undoRedoManager.canUndo,
+                canRedo = undoRedoManager.canRedo,
+                statusMessage = "Created MIDI clip: $name"
+            )
+        }
+    }
+
+    private suspend fun handleAddMidiNote(
+        trackId: Int,
+        clipId: Int,
+        pitch: Int,
+        startFrame: Long,
+        durationFrames: Long,
+        velocity: Float
+    ) = withContext(defaultDispatcher) {
+        val state = _uiState.value
+        val track = state.tracks.find { it.trackId == trackId } ?: return@withContext
+        val clip = track.clips.find { it.clipId == clipId } ?: return@withContext
+        undoRedoManager.pushState(state.tracks)
+
+        val nextNoteId = (clip.notes.maxOfOrNull { it.id } ?: 0) + 1
+        val newNote = MidiNote(
+            id = nextNoteId,
+            pitch = pitch.coerceIn(0, 127),
+            startFrame = maxOf(0L, startFrame),
+            durationFrames = maxOf(256L, durationFrames),
+            velocity = velocity.coerceIn(0f, 1f)
+        )
+        val updatedNotes = clip.notes + newNote
+
+        syncClipNotesToNative(trackId, clipId, updatedNotes)
+
+        _uiState.update { s ->
+            s.copy(
+                tracks = s.tracks.map { tr ->
+                    if (tr.trackId == trackId) {
+                        tr.copy(
+                            clips = tr.clips.map { c ->
+                                if (c.clipId == clipId) c.copy(notes = updatedNotes) else c
+                            }
+                        )
+                    } else tr
+                },
+                canUndo = undoRedoManager.canUndo,
+                canRedo = undoRedoManager.canRedo
+            )
+        }
+    }
+
+    private suspend fun handleUpdateMidiNote(
+        trackId: Int,
+        clipId: Int,
+        noteId: Int,
+        newPitch: Int,
+        newStartFrame: Long,
+        newDurationFrames: Long,
+        velocity: Float
+    ) = withContext(defaultDispatcher) {
+        val state = _uiState.value
+        val track = state.tracks.find { it.trackId == trackId } ?: return@withContext
+        val clip = track.clips.find { it.clipId == clipId } ?: return@withContext
+        undoRedoManager.pushState(state.tracks)
+
+        val updatedNotes = clip.notes.map { note ->
+            if (note.id == noteId) {
+                note.copy(
+                    pitch = newPitch.coerceIn(0, 127),
+                    startFrame = maxOf(0L, newStartFrame),
+                    durationFrames = maxOf(256L, newDurationFrames),
+                    velocity = velocity.coerceIn(0f, 1f)
+                )
+            } else note
+        }
+
+        syncClipNotesToNative(trackId, clipId, updatedNotes)
+
+        _uiState.update { s ->
+            s.copy(
+                tracks = s.tracks.map { tr ->
+                    if (tr.trackId == trackId) {
+                        tr.copy(
+                            clips = tr.clips.map { c ->
+                                if (c.clipId == clipId) c.copy(notes = updatedNotes) else c
+                            }
+                        )
+                    } else tr
+                },
+                canUndo = undoRedoManager.canUndo,
+                canRedo = undoRedoManager.canRedo
+            )
+        }
+    }
+
+    private suspend fun handleDeleteMidiNote(trackId: Int, clipId: Int, noteId: Int) = withContext(defaultDispatcher) {
+        val state = _uiState.value
+        val track = state.tracks.find { it.trackId == trackId } ?: return@withContext
+        val clip = track.clips.find { it.clipId == clipId } ?: return@withContext
+        undoRedoManager.pushState(state.tracks)
+
+        val updatedNotes = clip.notes.filterNot { it.id == noteId }
+
+        syncClipNotesToNative(trackId, clipId, updatedNotes)
+
+        _uiState.update { s ->
+            s.copy(
+                tracks = s.tracks.map { tr ->
+                    if (tr.trackId == trackId) {
+                        tr.copy(
+                            clips = tr.clips.map { c ->
+                                if (c.clipId == clipId) c.copy(notes = updatedNotes) else c
+                            }
+                        )
+                    } else tr
+                },
+                canUndo = undoRedoManager.canUndo,
+                canRedo = undoRedoManager.canRedo
+            )
+        }
+    }
+
+    private suspend fun handleAuditionNoteOn(trackId: Int, pitch: Int, velocity: Float) = withContext(defaultDispatcher) {
+        withNativeEngine { it.noteOn(trackId, pitch.coerceIn(0, 127), velocity.coerceIn(0f, 1f)) }
+    }
+
+    private suspend fun handleAuditionNoteOff(trackId: Int, pitch: Int) = withContext(defaultDispatcher) {
+        withNativeEngine { it.noteOff(trackId, pitch.coerceIn(0, 127)) }
+    }
+
+    private suspend fun handleUndo() = withContext(defaultDispatcher) {
+        val currentTracks = _uiState.value.tracks
+        val previousTracks = undoRedoManager.undo(currentTracks) ?: return@withContext
+
+        previousTracks.forEach { track ->
+            track.clips.filter { it.isMidi }.forEach { clip ->
+                syncClipNotesToNative(track.trackId, clip.clipId, clip.notes)
+            }
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                tracks = previousTracks,
+                canUndo = undoRedoManager.canUndo,
+                canRedo = undoRedoManager.canRedo,
+                statusMessage = "Undo performed"
+            )
+        }
+    }
+
+    private suspend fun handleRedo() = withContext(defaultDispatcher) {
+        val currentTracks = _uiState.value.tracks
+        val nextTracks = undoRedoManager.redo(currentTracks) ?: return@withContext
+
+        nextTracks.forEach { track ->
+            track.clips.filter { it.isMidi }.forEach { clip ->
+                syncClipNotesToNative(track.trackId, clip.clipId, clip.notes)
+            }
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                tracks = nextTracks,
+                canUndo = undoRedoManager.canUndo,
+                canRedo = undoRedoManager.canRedo,
+                statusMessage = "Redo performed"
+            )
+        }
+    }
+
+    private fun handleToggleFollowPlayhead() {
+        _uiState.update { it.copy(followPlayhead = !it.followPlayhead) }
+    }
+
+    private suspend fun syncClipNotesToNative(trackId: Int, clipId: Int, notes: List<MidiNote>) {
+        val ids = notes.map { it.id }.toIntArray()
+        val pitches = notes.map { it.pitch }.toIntArray()
+        val startFrames = notes.map { it.startFrame }.toLongArray()
+        val durations = notes.map { it.durationFrames }.toLongArray()
+        val velocities = notes.map { it.velocity }.toFloatArray()
+        withNativeEngine {
+            it.setClipMidiNotes(trackId, clipId, ids, pitches, startFrames, durations, velocities)
+        }
     }
 
     // =========================================================================

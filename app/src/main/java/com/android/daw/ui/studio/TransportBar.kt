@@ -214,28 +214,27 @@ fun TransportBar(
             }
 
             // =========================================================================
-            // 3. RIGHT CLUSTER: Modules drawer, CPU meter, RAM readout, Close
+            // 3. RIGHT CLUSTER: Undo / Redo (UI-08: removed duplicate '+'), CPU meter, RAM readout
             // =========================================================================
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Daw.space.sm)
+                horizontalArrangement = Arrangement.spacedBy(Daw.space.xs)
             ) {
-                // Modules Drawer Trigger Circle
-                Box(
-                    modifier = Modifier
-                        .size(Daw.space.circleSm)
-                        .clip(CircleShape)
-                        .background(if (state.isModulesDrawerOpen) Daw.colors.mint.base else Daw.colors.n3Raised)
-                        .clickable { onAction(StudioAction.ToggleModulesDrawer) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.foundation.Image(
-                        imageVector = DawIcons.Add,
-                        contentDescription = "Modules",
-                        colorFilter = ColorFilter.tint(if (state.isModulesDrawerOpen) Daw.colors.inkOnLight else Daw.colors.inkOnDark),
-                        modifier = Modifier.size(Daw.space.iconMin)
-                    )
-                }
+                // Undo
+                DawIconButton(
+                    icon = DawIcons.Back,
+                    contentDescription = "Undo",
+                    onClick = { onAction(StudioAction.Undo) }
+                )
+
+                // Redo
+                DawIconButton(
+                    icon = DawIcons.Forward,
+                    contentDescription = "Redo",
+                    onClick = { onAction(StudioAction.Redo) }
+                )
+
+                Spacer(modifier = Modifier.width(Daw.space.xs))
 
                 // CPU Meter (48x4dp bar: Mint -> Coral > 85%)
                 Column(

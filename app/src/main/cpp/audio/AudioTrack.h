@@ -13,12 +13,20 @@
 #include "../dsp/Panner.h"
 #include "../dsp/ParametricEq.h"
 #include "../dsp/DelayEffect.h"
+#include "../dsp/SubSynth.h"
+#include "../dsp/DrumKitSynth.h"
 
 namespace daw {
 namespace audio {
 
+enum class TrackType : int {
+    AUDIO = 0,
+    SUB_SYNTH = 1,
+    DRUM_KIT = 2
+};
+
 /**
- * AudioTrack: Channel strip containing audio clips, DSP rack, gain/pan, and metering.
+ * AudioTrack: Channel strip containing audio/MIDI clips, instruments, DSP rack, gain/pan, and metering.
  */
 class AudioTrack {
 public:
@@ -64,6 +72,20 @@ public:
     void setArmed(bool armed) noexcept { armed_.store(armed, std::memory_order_relaxed); }
     [[nodiscard]] bool isArmed() const noexcept { return armed_.load(std::memory_order_relaxed); }
 
+    // Track Type & Instrument Configuration
+    [[nodiscard]] TrackType getTrackType() const noexcept { return track_type_; }
+    void setTrackType(TrackType type) noexcept { track_type_ = type; }
+
+    void noteOn(int note, float velocity) noexcept;
+    void noteOff(int note) noexcept;
+    void allNotesOff() noexcept;
+
+    [[nodiscard]] dsp::SubSynth& getSubSynth() noexcept { return sub_synth_; }
+    [[nodiscard]] const dsp::SubSynth& getSubSynth() const noexcept { return sub_synth_; }
+
+    [[nodiscard]] dsp::DrumKitSynth& getDrumKitSynth() noexcept { return drum_synth_; }
+    [[nodiscard]] const dsp::DrumKitSynth& getDrumKitSynth() const noexcept { return drum_synth_; }
+
     // DSP Rack Configuration
     void setEqBand(size_t band_idx, dsp::FilterType type, float freq_hz, float gain_db, float q_factor) noexcept;
     void setDelay(float delay_ms, float feedback, float wet_dry) noexcept;
@@ -96,6 +118,11 @@ private:
     float sample_rate_{48000.0f};
 
     std::vector<AudioClip> clips_;
+
+    // Instrument engines
+    TrackType track_type_{TrackType::AUDIO};
+    dsp::SubSynth sub_synth_{48000.0f};
+    dsp::DrumKitSynth drum_synth_{48000.0f};
 
     // DSP processing chain
     dsp::ParameterSmoother volume_smoother_{1.0f};

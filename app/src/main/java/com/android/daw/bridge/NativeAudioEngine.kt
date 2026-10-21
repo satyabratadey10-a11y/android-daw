@@ -306,6 +306,83 @@ class NativeAudioEngine(
         }
     }
 
+    override suspend fun setTrackType(trackId: Int, trackType: Int): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return false
+        return withContext(defaultDispatcher) {
+            try {
+                nativeSetTrackType(trackId, trackType)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    override suspend fun noteOn(trackId: Int, pitch: Int, velocity: Float) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSendNoteOn(trackId, pitch, velocity)
+            } catch (_: Throwable) {}
+        }
+    }
+
+    override suspend fun noteOff(trackId: Int, pitch: Int) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            try {
+                nativeSendNoteOff(trackId, pitch)
+            } catch (_: Throwable) {}
+        }
+    }
+
+    override suspend fun allNotesOff(trackId: Int) {
+        if (!isLibraryLoaded || !isInitialized) return
+        withContext(defaultDispatcher) {
+            for (p in 0..127) {
+                try {
+                    nativeSendNoteOff(trackId, p)
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
+    override suspend fun loadMidiClip(
+        trackId: Int,
+        clipId: Int,
+        name: String,
+        startOffsetFrames: Long,
+        durationFrames: Long
+    ): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return false
+        return withContext(defaultDispatcher) {
+            try {
+                nativeLoadMidiClip(trackId, clipId, name, startOffsetFrames, durationFrames)
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    override suspend fun setClipMidiNotes(
+        trackId: Int,
+        clipId: Int,
+        ids: IntArray,
+        pitches: IntArray,
+        startFrames: LongArray,
+        durations: LongArray,
+        velocities: FloatArray
+    ): Boolean {
+        if (!isLibraryLoaded || !isInitialized) return false
+        return withContext(defaultDispatcher) {
+            try {
+                nativeSetClipMidiNotes(trackId, clipId, ids, pitches, startFrames, durations, velocities)
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
     // ========================================================================
     // DSP Controls (Dispatchers.Default)
     // ========================================================================
@@ -581,6 +658,9 @@ class NativeAudioEngine(
     private external fun nativeSetTrackMute(trackId: Int, muted: Boolean)
     private external fun nativeSetTrackSolo(trackId: Int, soloed: Boolean)
     private external fun nativeSetTrackArmed(trackId: Int, armed: Boolean)
+    private external fun nativeSetTrackType(trackId: Int, trackType: Int)
+    private external fun nativeSendNoteOn(trackId: Int, note: Int, velocity: Float)
+    private external fun nativeSendNoteOff(trackId: Int, note: Int)
 
     private external fun nativeSetTrackEqBand(
         trackId: Int,
@@ -612,6 +692,24 @@ class NativeAudioEngine(
         clipId: Int,
         filePath: String,
         startOffsetFrames: Long
+    ): Boolean
+
+    private external fun nativeLoadMidiClip(
+        trackId: Int,
+        clipId: Int,
+        name: String,
+        startOffsetFrames: Long,
+        durationFrames: Long
+    ): Boolean
+
+    private external fun nativeSetClipMidiNotes(
+        trackId: Int,
+        clipId: Int,
+        ids: IntArray,
+        notes: IntArray,
+        startFrames: LongArray,
+        durations: LongArray,
+        velocities: FloatArray
     ): Boolean
 
     private external fun nativeMoveClip(trackId: Int, clipId: Int, newStartFrame: Long): Boolean

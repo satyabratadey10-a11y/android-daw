@@ -43,59 +43,51 @@ fun ActionChips(
         exit = fadeOut(Daw.motion.fast()) + scaleOut(animationSpec = Daw.motion.snappy()),
         modifier = modifier.zIndex(Layer.Floating)
     ) {
-        Box(
-            modifier = Modifier
-                .background(
-                    color = Daw.colors.n0Workspace.copy(alpha = 0.65f),
-                    shape = Daw.radii.full
-                )
-                .padding(horizontal = Daw.space.sm, vertical = Daw.space.xs)
+        // UI-07: exactly Copy · Delete · Snap · Edit · More…, 40dp N4 circles, 8dp gaps, no backdrop pill
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Daw.space.sm),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Daw.space.sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 1. Copy Chip
-                FloatingCircle(
-                    icon = DawIcons.Copy,
-                    size = FloatingCircleSize.Small,
-                    contentDescription = "Copy Clip",
-                    onClick = { onActionClick("COPY") }
-                )
+            // 1. Copy Chip
+            FloatingCircle(
+                icon = DawIcons.Copy,
+                size = FloatingCircleSize.Small,
+                contentDescription = "Copy Clip",
+                onClick = { onActionClick("COPY") }
+            )
 
-                // 2. Edit Chip
-                FloatingCircle(
-                    icon = DawIcons.Edit,
-                    size = FloatingCircleSize.Small,
-                    contentDescription = "Edit Clip",
-                    onClick = { onActionClick("EDIT") }
-                )
+            // 2. Delete Chip
+            FloatingCircle(
+                icon = DawIcons.Trash,
+                size = FloatingCircleSize.Small,
+                contentDescription = "Delete Clip",
+                tint = Daw.colors.coral.base,
+                onClick = { onActionClick("DELETE") }
+            )
 
-                // 3. Snap Chip
-                FloatingCircle(
-                    icon = DawIcons.Snap,
-                    size = FloatingCircleSize.Small,
-                    contentDescription = "Snap Clip",
-                    onClick = { onActionClick("SNAP") }
-                )
+            // 3. Snap Chip
+            FloatingCircle(
+                icon = DawIcons.Snap,
+                size = FloatingCircleSize.Small,
+                contentDescription = "Snap Clip",
+                onClick = { onActionClick("SNAP") }
+            )
 
-                // 4. Delete Chip
-                FloatingCircle(
-                    icon = DawIcons.Trash,
-                    size = FloatingCircleSize.Small,
-                    contentDescription = "Delete Clip",
-                    tint = Daw.colors.coral.base,
-                    onClick = { onActionClick("DELETE") }
-                )
+            // 4. Edit Chip
+            FloatingCircle(
+                icon = DawIcons.Edit,
+                size = FloatingCircleSize.Small,
+                contentDescription = "Edit Clip",
+                onClick = { onActionClick("EDIT") }
+            )
 
-                // 5. More... Menu Chip
-                FloatingCircle(
-                    icon = DawIcons.More,
-                    size = FloatingCircleSize.Small,
-                    contentDescription = "More Options",
-                    onClick = { onActionClick("MORE") }
-                )
-            }
+            // 5. More... Menu Chip
+            FloatingCircle(
+                icon = DawIcons.More,
+                size = FloatingCircleSize.Small,
+                contentDescription = "More Options",
+                onClick = { onActionClick("MORE") }
+            )
         }
     }
 }
