@@ -70,6 +70,8 @@ public:
     void setTrackEqBand(int track_id, int band_index, int filter_type, float freq_hz, float gain_db, float q_factor) noexcept;
     void setTrackDelay(int track_id, float delay_ms, float feedback, float wet_dry) noexcept;
     void setMasterLimiter(float threshold_db, float ceiling_db, float release_ms) noexcept;
+    void setSynthParams(int track_id, float cutoff_hz, float resonance, float drive) noexcept;
+    void setSynthAdsr(int track_id, float attack_sec, float decay_sec, float sustain_level, float release_sec) noexcept;
 
     [[nodiscard]] dsp::MasterLimiter& getMasterLimiter() noexcept { return master_limiter_; }
     [[nodiscard]] const dsp::MasterLimiter& getMasterLimiter() const noexcept { return master_limiter_; }

@@ -45,6 +45,8 @@ interface EngineApi {
     suspend fun setTrackEqBand(trackId: Int, bandIndex: Int, filterType: Int, freqHz: Float, gainDb: Float, qFactor: Float): Boolean
     suspend fun setTrackDelay(trackId: Int, delayMs: Float, feedback: Float, wetDry: Float): Boolean
     suspend fun setMasterLimiter(thresholdDb: Float, ceilingDb: Float, releaseMs: Float): Boolean
+    suspend fun setSynthParams(trackId: Int, cutoffHz: Float, resonance: Float, drive: Float): Boolean
+    suspend fun setSynthEnvelope(trackId: Int, attackSec: Float, decaySec: Float, sustainLevel: Float, releaseSec: Float): Boolean
 
     // Telemetry & Recording / Export
     fun getTelemetryData(): com.android.daw.domain.model.TelemetryData

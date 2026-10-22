@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -59,6 +61,9 @@ fun VerticalFader(
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
 
+    val currentVolumeLinear by rememberUpdatedState(volumeLinear)
+    val currentOnVolumeChange by rememberUpdatedState(onVolumeChange)
+
     val travel = remember(volumeLinear) { linearToTravel(volumeLinear) }
     val dbReadout = remember(volumeLinear) { linearToDbReadout(volumeLinear) }
 
@@ -96,7 +101,7 @@ fun VerticalFader(
                     if (!enabled) return@pointerInput
                     detectTapGestures(
                         onDoubleTap = {
-                            onVolumeChange(1.0f) // Snap to 0 dB Unity Gain
+                            currentOnVolumeChange(1.0f) // Snap to 0 dB Unity Gain
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         },
                         onTap = { offset ->
@@ -105,7 +110,7 @@ fun VerticalFader(
                             if (usableHeightPx > 0f) {
                                 val clickedTravel = (1f - (offset.y - thumbHeightPx / 2f) / usableHeightPx).coerceIn(0f, 1f)
                                 val snapped = if (abs(clickedTravel - 0.75f) < 0.04f) 0.75f else clickedTravel
-                                onVolumeChange(travelToLinear(snapped))
+                                currentOnVolumeChange(travelToLinear(snapped))
                                 if (snapped == 0.75f) {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 }
@@ -113,14 +118,14 @@ fun VerticalFader(
                         }
                     )
                 }
-                .pointerInput(enabled, volumeLinear) {
+                .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
                     detectDragGestures { change, dragAmount ->
                         change.consume()
                         val thumbHeightPx = thumbHeightDp.toPx()
                         val usableHeightPx = size.height - thumbHeightPx
                         if (usableHeightPx > 0f) {
-                            val currentTravel = linearToTravel(volumeLinear)
+                            val currentTravel = linearToTravel(currentVolumeLinear)
                             // Dragging up (negative y) increases travel
                             val deltaTravel = -dragAmount.y / usableHeightPx
                             val rawNewTravel = (currentTravel + deltaTravel).coerceIn(0f, 1f)
@@ -136,7 +141,7 @@ fun VerticalFader(
                             }
 
                             if (finalTravel != currentTravel) {
-                                onVolumeChange(travelToLinear(finalTravel))
+                                currentOnVolumeChange(travelToLinear(finalTravel))
                             }
                         }
                     }

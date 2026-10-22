@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -43,6 +45,9 @@ fun Fader(
     label: String = "VOL",
     height: Dp = Daw.space.dial
 ) {
+    val currentVolumeLinear by rememberUpdatedState(volumeLinear)
+    val currentOnVolumeChange by rememberUpdatedState(onVolumeChange)
+
     val faderTravelNormalized = linearToTravel(volumeLinear)
     val colors = Daw.colors
     val space = Daw.space
@@ -88,7 +93,7 @@ fun Fader(
                     detectTapGestures(
                         onDoubleTap = {
                             // Double tap snaps to 0 dB Unity Gain (linear 1.0)
-                            onVolumeChange(1.0f)
+                            currentOnVolumeChange(1.0f)
                         }
                     )
                 }
@@ -99,10 +104,10 @@ fun Fader(
                         val trackHeightPx = size.height - thumbHeightPx
                         if (trackHeightPx > 0f) {
                             val deltaTravel = -dragAmount.y / trackHeightPx
-                            val currentTravel = linearToTravel(volumeLinear)
+                            val currentTravel = linearToTravel(currentVolumeLinear)
                             val newTravel = (currentTravel + deltaTravel).coerceIn(0f, 1f)
                             val newLinear = travelToLinear(newTravel)
-                            onVolumeChange(newLinear)
+                            currentOnVolumeChange(newLinear)
                         }
                     }
                 }

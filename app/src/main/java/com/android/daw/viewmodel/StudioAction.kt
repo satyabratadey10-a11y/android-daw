@@ -90,6 +90,26 @@ sealed interface StudioAction {
 
     data class ToggleLimiterBypass(val isBypassed: Boolean) : StudioAction
 
+    data class UpdateSynthParams(
+        val trackId: Int,
+        val cutoffHz: Float,
+        val resonance: Float,
+        val drive: Float
+    ) : StudioAction
+
+    data class UpdateSynthEnvelope(
+        val trackId: Int,
+        val attackSec: Float,
+        val decaySec: Float,
+        val sustainLevel: Float,
+        val releaseSec: Float
+    ) : StudioAction
+
+    data class ToggleSynthOption(
+        val trackId: Int,
+        val option: String
+    ) : StudioAction
+
     // --- Recording & File I/O ---
     data class ToggleRecord(val isRecording: Boolean) : StudioAction
     data class ImportAudio(val trackId: Int, val uri: Uri) : StudioAction

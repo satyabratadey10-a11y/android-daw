@@ -89,6 +89,8 @@ public:
     // DSP Rack Configuration
     void setEqBand(size_t band_idx, dsp::FilterType type, float freq_hz, float gain_db, float q_factor) noexcept;
     void setDelay(float delay_ms, float feedback, float wet_dry) noexcept;
+    void setSynthParams(float cutoff_hz, float resonance, float drive) noexcept;
+    void setSynthAdsr(float attack_sec, float decay_sec, float sustain_level, float release_sec) noexcept;
 
     [[nodiscard]] dsp::ParametricEq& getParametricEq() noexcept { return parametric_eq_; }
     [[nodiscard]] const dsp::ParametricEq& getParametricEq() const noexcept { return parametric_eq_; }

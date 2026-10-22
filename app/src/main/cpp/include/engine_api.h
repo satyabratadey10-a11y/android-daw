@@ -91,6 +91,8 @@ void daw_engine_set_param(int track_id, int plugin_index, int param_id, float va
 void daw_engine_set_track_eq_band(int track_id, int band_index, int filter_type, float freq_hz, float gain_db, float q_factor);
 void daw_engine_set_track_delay(int track_id, float delay_ms, float feedback, float wet_dry);
 void daw_engine_set_master_limiter(float threshold_db, float ceiling_db, float release_ms);
+void daw_engine_set_synth_params(int track_id, float cutoff_hz, float resonance, float drive);
+void daw_engine_set_synth_adsr(int track_id, float attack_sec, float decay_sec, float sustain_level, float release_sec);
 
 // =============================================================================
 // Telemetry & Level Metering

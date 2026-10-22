@@ -82,8 +82,25 @@ class NativeAudioEngine(
         }
     }
 
+    fun ensureInitialized(sampleRate: Int = 48000, framesPerBurst: Int = 192): Boolean {
+        if (!isLibraryLoaded) return false
+        if (isInitialized) return true
+        return synchronized(this) {
+            if (isInitialized) return true
+            try {
+                nativeInit(sampleRate, framesPerBurst)
+                isInitialized = true
+                true
+            } catch (_: Throwable) {
+                isInitialized = false
+                false
+            }
+        }
+    }
+
     suspend fun start(): Boolean {
-        if (!isLibraryLoaded || !isInitialized) return false
+        if (!isLibraryLoaded) return false
+        ensureInitialized()
         return withContext(defaultDispatcher) {
             try {
                 nativePlay()
@@ -133,7 +150,8 @@ class NativeAudioEngine(
     // ========================================================================
 
     override suspend fun play(): Boolean {
-        if (!isLibraryLoaded || !isInitialized) return false
+        if (!isLibraryLoaded) return false
+        ensureInitialized()
         return withContext(defaultDispatcher) {
             try {
                 nativePlay()
@@ -220,7 +238,8 @@ class NativeAudioEngine(
     }
 
     suspend fun addTrack(trackId: Int): Boolean {
-        if (!isLibraryLoaded || !isInitialized) return true
+        if (!isLibraryLoaded) return true
+        ensureInitialized()
         return withContext(defaultDispatcher) {
             try {
                 nativeAddTrack("Track $trackId") >= 0
@@ -319,7 +338,8 @@ class NativeAudioEngine(
     }
 
     override suspend fun noteOn(trackId: Int, pitch: Int, velocity: Float) {
-        if (!isLibraryLoaded || !isInitialized) return
+        if (!isLibraryLoaded) return
+        ensureInitialized()
         withContext(defaultDispatcher) {
             try {
                 nativeSendNoteOn(trackId, pitch, velocity)
@@ -328,7 +348,8 @@ class NativeAudioEngine(
     }
 
     override suspend fun noteOff(trackId: Int, pitch: Int) {
-        if (!isLibraryLoaded || !isInitialized) return
+        if (!isLibraryLoaded) return
+        ensureInitialized()
         withContext(defaultDispatcher) {
             try {
                 nativeSendNoteOff(trackId, pitch)
@@ -337,7 +358,8 @@ class NativeAudioEngine(
     }
 
     override suspend fun allNotesOff(trackId: Int) {
-        if (!isLibraryLoaded || !isInitialized) return
+        if (!isLibraryLoaded) return
+        ensureInitialized()
         withContext(defaultDispatcher) {
             for (p in 0..127) {
                 try {
@@ -443,6 +465,43 @@ class NativeAudioEngine(
         return withContext(defaultDispatcher) {
             try {
                 nativeSetMasterLimiter(thresholdDb, ceilingDb, releaseMs)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    override suspend fun setSynthParams(
+        trackId: Int,
+        cutoffHz: Float,
+        resonance: Float,
+        drive: Float
+    ): Boolean {
+        if (!isLibraryLoaded) return false
+        ensureInitialized()
+        return withContext(defaultDispatcher) {
+            try {
+                nativeSetSynthParams(trackId, cutoffHz, resonance, drive)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    override suspend fun setSynthEnvelope(
+        trackId: Int,
+        attackSec: Float,
+        decaySec: Float,
+        sustainLevel: Float,
+        releaseSec: Float
+    ): Boolean {
+        if (!isLibraryLoaded) return false
+        ensureInitialized()
+        return withContext(defaultDispatcher) {
+            try {
+                nativeSetSynthAdsr(trackId, attackSec, decaySec, sustainLevel, releaseSec)
                 true
             } catch (_: Throwable) {
                 false
@@ -674,6 +733,21 @@ class NativeAudioEngine(
         thresholdDb: Float,
         ceilingDb: Float,
         releaseMs: Float
+    )
+
+    private external fun nativeSetSynthParams(
+        trackId: Int,
+        cutoffHz: Float,
+        resonance: Float,
+        drive: Float
+    )
+
+    private external fun nativeSetSynthAdsr(
+        trackId: Int,
+        attack: Float,
+        decay: Float,
+        sustain: Float,
+        release: Float
     )
 
     private external fun nativeGetPlaybackPositionFrames(): Long

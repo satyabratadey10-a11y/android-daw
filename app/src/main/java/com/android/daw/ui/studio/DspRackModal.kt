@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.android.daw.ui.components.DawIconButton
 import com.android.daw.ui.components.EqCurveVisualizer
+import com.android.daw.ui.components.FloatingCircle
 import com.android.daw.ui.components.RingKnob
 import com.android.daw.ui.components.SlidingTabs
 import com.android.daw.ui.components.VerticalSlider
@@ -54,6 +55,7 @@ import com.android.daw.viewmodel.EqBandState
 import com.android.daw.viewmodel.FilterType
 import com.android.daw.viewmodel.StudioAction
 import com.android.daw.viewmodel.StudioUiState
+import com.android.daw.viewmodel.TrackInstrumentType
 
 /**
  * SD Studio DAW Instrument / Module / DSP Rack Panel
@@ -78,9 +80,11 @@ fun DspRackModal(
     val tabs = listOf("EQ", "DELAY", "LIMITER", "SYNTH", "ENVELOPE")
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
-    val targetTrack = state.selectedTrack ?: state.tracks.firstOrNull()
-    val isMaster = state.dspTargetTrackId == null
-    val targetName = if (isMaster) "MASTER BUS" else targetTrack?.name ?: "TRACK"
+    val targetTrack = state.tracks.find { it.trackId == state.dspTargetTrackId }
+        ?: state.selectedTrack
+        ?: state.tracks.firstOrNull()
+    val isLimiterTab = selectedTabIndex == 2
+    val targetName = if (isLimiterTab) "MASTER BUS" else targetTrack?.name ?: "TRACK"
 
     AnimatedVisibility(
         visible = isOpen,
@@ -181,69 +185,67 @@ fun DspRackModal(
                     when (selectedTabIndex) {
                         0 -> {
                             // --- EQ Tab ---
-                            val eqBands = targetTrack?.eqBands ?: emptyList()
-                            Text(
-                                text = "4-BAND PARAMETRIC EQUALIZER",
-                                style = Daw.type.label,
-                                color = Daw.colors.mint.base
-                            )
+                            if (targetTrack == null) {
+                                EmptyTrackPlaceholder(onAction)
+                            } else {
+                                val eqBands = targetTrack.eqBands
+                                Text(
+                                    text = "4-BAND PARAMETRIC EQUALIZER",
+                                    style = Daw.type.label,
+                                    color = Daw.colors.mint.base
+                                )
 
-                            // Interactive EQ Curve Canvas
-                            EqCurveVisualizer(
-                                bands = eqBands,
-                                onUpdateBand = { bandIndex, freq, gain, q ->
-                                    if (!isMaster && targetTrack != null) {
+                                // Interactive EQ Curve Canvas
+                                EqCurveVisualizer(
+                                    bands = eqBands,
+                                    onUpdateBand = { bandIndex, freq, gain, q ->
                                         onAction(StudioAction.UpdateEq(targetTrack.trackId, bandIndex, freq, gain, q))
                                     }
-                                }
-                            )
+                                )
 
-                            // Band Controls Row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                eqBands.forEach { band ->
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(Daw.space.xs)
-                                    ) {
-                                        Text(
-                                            text = "BAND ${band.bandIndex + 1}",
-                                            style = Daw.type.caption,
-                                            color = Daw.colors.trackColor(band.bandIndex)
-                                        )
+                                // Band Controls Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    eqBands.forEach { band ->
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(Daw.space.xs)
+                                        ) {
+                                            Text(
+                                                text = "BAND ${band.bandIndex + 1}",
+                                                style = Daw.type.caption,
+                                                color = Daw.colors.trackColor(band.bandIndex)
+                                            )
 
-                                        // Frequency RingKnob
-                                        RingKnob(
-                                            value = ((band.frequencyHz - 20f) / 19980f).coerceIn(0f, 1f),
-                                            onValueChange = { norm ->
-                                                val freq = 20f + norm * 19980f
-                                                if (!isMaster && targetTrack != null) {
+                                            // Frequency RingKnob
+                                            RingKnob(
+                                                value = ((band.frequencyHz - 20f) / 19980f).coerceIn(0f, 1f),
+                                                onValueChange = { norm ->
+                                                    val freq = 20f + norm * 19980f
                                                     onAction(StudioAction.UpdateEq(targetTrack.trackId, band.bandIndex, freq, band.gainDb, band.q))
-                                                }
-                                            },
-                                            valueFormatter = { "${band.frequencyHz.toInt()}Hz" },
-                                            activeColor = Daw.colors.trackColor(band.bandIndex),
-                                            size = Daw.space.circleMd,
-                                            label = "FREQ"
-                                        )
+                                                },
+                                                valueFormatter = { "${band.frequencyHz.toInt()}Hz" },
+                                                activeColor = Daw.colors.trackColor(band.bandIndex),
+                                                size = Daw.space.circleMd,
+                                                label = "FREQ"
+                                            )
 
-                                        // Gain RingKnob
-                                        RingKnob(
-                                            value = (band.gainDb / 18f).coerceIn(-1f, 1f),
-                                            onValueChange = { norm ->
-                                                val gain = norm * 18f
-                                                if (!isMaster && targetTrack != null) {
+                                            // Gain RingKnob
+                                            RingKnob(
+                                                value = (band.gainDb / 18f).coerceIn(-1f, 1f),
+                                                onValueChange = { norm ->
+                                                    val gain = norm * 18f
                                                     onAction(StudioAction.UpdateEq(targetTrack.trackId, band.bandIndex, band.frequencyHz, gain, band.q))
-                                                }
-                                            },
-                                            valueFormatter = { String.format("%.1fdB", band.gainDb) },
-                                            isBipolar = true,
-                                            activeColor = Daw.colors.trackColor(band.bandIndex),
-                                            size = Daw.space.circleMd,
-                                            label = "GAIN"
-                                        )
+                                                },
+                                                valueFormatter = { String.format("%.1fdB", band.gainDb) },
+                                                isBipolar = true,
+                                                activeColor = Daw.colors.trackColor(band.bandIndex),
+                                                size = Daw.space.circleMd,
+                                                label = "GAIN"
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -251,75 +253,69 @@ fun DspRackModal(
 
                         1 -> {
                             // --- Delay Tab ---
-                            val delay = targetTrack?.delayParams
-                            Text(
-                                text = "STEREO DELAY EFFECT",
-                                style = Daw.type.label,
-                                color = Daw.colors.sky.base
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceAround
-                            ) {
-                                RingKnob(
-                                    value = ((delay?.timeMs ?: 250f) / 1000f).coerceIn(0f, 1f),
-                                    onValueChange = { norm ->
-                                        if (!isMaster && targetTrack != null) {
-                                            onAction(StudioAction.UpdateDelay(targetTrack.trackId, norm * 1000f, delay?.feedback ?: 0.35f, delay?.wetDry ?: 0.3f))
-                                        }
-                                    },
-                                    valueFormatter = { "${((delay?.timeMs ?: 250f)).toInt()}ms" },
-                                    activeColor = Daw.colors.sky.base,
-                                    label = "TIME"
+                            if (targetTrack == null) {
+                                EmptyTrackPlaceholder(onAction)
+                            } else {
+                                val delay = targetTrack.delayParams
+                                Text(
+                                    text = "STEREO DELAY EFFECT",
+                                    style = Daw.type.label,
+                                    color = Daw.colors.sky.base
                                 )
 
-                                RingKnob(
-                                    value = delay?.feedback ?: 0.35f,
-                                    onValueChange = { norm ->
-                                        if (!isMaster && targetTrack != null) {
-                                            onAction(StudioAction.UpdateDelay(targetTrack.trackId, delay?.timeMs ?: 250f, norm, delay?.wetDry ?: 0.3f))
-                                        }
-                                    },
-                                    activeColor = Daw.colors.sky.base,
-                                    label = "FEEDBACK"
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceAround
+                                ) {
+                                    RingKnob(
+                                        value = ((delay.timeMs) / 1000f).coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateDelay(targetTrack.trackId, norm * 1000f, delay.feedback, delay.wetDry))
+                                        },
+                                        valueFormatter = { "${delay.timeMs.toInt()}ms" },
+                                        activeColor = Daw.colors.sky.base,
+                                        label = "TIME"
+                                    )
 
-                                RingKnob(
-                                    value = delay?.wetDry ?: 0.3f,
-                                    onValueChange = { norm ->
-                                        if (!isMaster && targetTrack != null) {
-                                            onAction(StudioAction.UpdateDelay(targetTrack.trackId, delay?.timeMs ?: 250f, delay?.feedback ?: 0.35f, norm))
-                                        }
-                                    },
-                                    activeColor = Daw.colors.sky.base,
-                                    label = "WET/DRY"
-                                )
-                            }
+                                    RingKnob(
+                                        value = delay.feedback.coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateDelay(targetTrack.trackId, delay.timeMs, norm, delay.wetDry))
+                                        },
+                                        activeColor = Daw.colors.sky.base,
+                                        label = "FEEDBACK"
+                                    )
 
-                            // Toggles
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(Daw.space.md),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                DawTextToggle(
-                                    text = "PING-PONG",
-                                    isActive = delay?.isPingPong ?: true,
-                                    onToggle = {
-                                        if (!isMaster && targetTrack != null) {
+                                    RingKnob(
+                                        value = delay.wetDry.coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateDelay(targetTrack.trackId, delay.timeMs, delay.feedback, norm))
+                                        },
+                                        activeColor = Daw.colors.sky.base,
+                                        label = "WET/DRY"
+                                    )
+                                }
+
+                                // Toggles
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(Daw.space.md),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    DawTextToggle(
+                                        text = "PING-PONG",
+                                        isActive = delay.isPingPong,
+                                        onToggle = {
                                             onAction(StudioAction.ToggleDelayPingPong(targetTrack.trackId))
                                         }
-                                    }
-                                )
-                                DawTextToggle(
-                                    text = "BYPASS",
-                                    isActive = !(delay?.isEnabled ?: true),
-                                    onToggle = {
-                                        if (!isMaster && targetTrack != null) {
+                                    )
+                                    DawTextToggle(
+                                        text = "BYPASS",
+                                        isActive = !delay.isEnabled,
+                                        onToggle = {
                                             onAction(StudioAction.ToggleDelayBypass(targetTrack.trackId))
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
 
@@ -373,49 +369,150 @@ fun DspRackModal(
 
                         3 -> {
                             // --- Synth Tab (Tier 3 Deep parameters) ---
-                            Text(
-                                text = "SYNTHESIZER PARAMETERS",
-                                style = Daw.type.label,
-                                color = Daw.colors.mint.base
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceAround
-                            ) {
-                                RingKnob(value = 0.5f, onValueChange = {}, label = "CUTOFF")
-                                RingKnob(value = 0.3f, onValueChange = {}, label = "RESONANCE")
-                                RingKnob(value = 0.7f, onValueChange = {}, label = "DRIVE")
-                            }
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(Daw.space.sm)
-                            ) {
-                                DawTextToggle(text = "MONO", isActive = true, onToggle = {})
-                                DawTextToggle(text = "LEGATO", isActive = false, onToggle = {})
-                                DawTextToggle(text = "PORTA", isActive = true, onToggle = {})
+                            if (targetTrack == null) {
+                                EmptyTrackPlaceholder(onAction)
+                            } else {
+                                val synth = targetTrack.synthParams
+                                Text(
+                                    text = "SYNTHESIZER PARAMETERS",
+                                    style = Daw.type.label,
+                                    color = Daw.colors.mint.base
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceAround
+                                ) {
+                                    RingKnob(
+                                        value = ((synth.cutoffHz - 20f) / 19980f).coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateSynthParams(targetTrack.trackId, 20f + norm * 19980f, synth.resonance, synth.drive))
+                                        },
+                                        valueFormatter = { "${synth.cutoffHz.toInt()}Hz" },
+                                        activeColor = Daw.colors.mint.base,
+                                        label = "CUTOFF"
+                                    )
+                                    RingKnob(
+                                        value = ((synth.resonance - 0.5f) / 9.5f).coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateSynthParams(targetTrack.trackId, synth.cutoffHz, 0.5f + norm * 9.5f, synth.drive))
+                                        },
+                                        valueFormatter = { String.format("%.1f", synth.resonance) },
+                                        activeColor = Daw.colors.mint.base,
+                                        label = "RESONANCE"
+                                    )
+                                    RingKnob(
+                                        value = (synth.drive / 2f).coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateSynthParams(targetTrack.trackId, synth.cutoffHz, synth.resonance, norm * 2f))
+                                        },
+                                        valueFormatter = { "${(synth.drive * 100).toInt()}%" },
+                                        activeColor = Daw.colors.mint.base,
+                                        label = "DRIVE"
+                                    )
+                                }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(Daw.space.sm)
+                                ) {
+                                    DawTextToggle(
+                                        text = "MONO",
+                                        isActive = synth.isMono,
+                                        onToggle = { onAction(StudioAction.ToggleSynthOption(targetTrack.trackId, "MONO")) }
+                                    )
+                                    DawTextToggle(
+                                        text = "LEGATO",
+                                        isActive = synth.isLegato,
+                                        onToggle = { onAction(StudioAction.ToggleSynthOption(targetTrack.trackId, "LEGATO")) }
+                                    )
+                                    DawTextToggle(
+                                        text = "PORTA",
+                                        isActive = synth.isPortamento,
+                                        onToggle = { onAction(StudioAction.ToggleSynthOption(targetTrack.trackId, "PORTA")) }
+                                    )
+                                }
                             }
                         }
 
                         4 -> {
                             // --- Envelope Tab ---
-                            Text(
-                                text = "ADSR AMPLITUDE ENVELOPE",
-                                style = Daw.type.label,
-                                color = Daw.colors.mint.base
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceAround
-                            ) {
-                                VerticalSlider(value = 0.1f, onValueChange = {}, label = "A")
-                                VerticalSlider(value = 0.3f, onValueChange = {}, label = "D")
-                                VerticalSlider(value = 0.7f, onValueChange = {}, label = "S")
-                                VerticalSlider(value = 0.4f, onValueChange = {}, label = "R")
+                            if (targetTrack == null) {
+                                EmptyTrackPlaceholder(onAction)
+                            } else {
+                                val synth = targetTrack.synthParams
+                                Text(
+                                    text = "ADSR AMPLITUDE ENVELOPE",
+                                    style = Daw.type.label,
+                                    color = Daw.colors.mint.base
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceAround
+                                ) {
+                                    VerticalSlider(
+                                        value = (synth.attackSec / 2f).coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateSynthEnvelope(targetTrack.trackId, maxOf(0.001f, norm * 2f), synth.decaySec, synth.sustainLevel, synth.releaseSec))
+                                        },
+                                        label = "A: ${(synth.attackSec * 1000).toInt()}ms"
+                                    )
+                                    VerticalSlider(
+                                        value = (synth.decaySec / 2f).coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateSynthEnvelope(targetTrack.trackId, synth.attackSec, maxOf(0.001f, norm * 2f), synth.sustainLevel, synth.releaseSec))
+                                        },
+                                        label = "D: ${(synth.decaySec * 1000).toInt()}ms"
+                                    )
+                                    VerticalSlider(
+                                        value = synth.sustainLevel.coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateSynthEnvelope(targetTrack.trackId, synth.attackSec, synth.decaySec, norm, synth.releaseSec))
+                                        },
+                                        label = "S: ${(synth.sustainLevel * 100).toInt()}%"
+                                    )
+                                    VerticalSlider(
+                                        value = (synth.releaseSec / 3f).coerceIn(0f, 1f),
+                                        onValueChange = { norm ->
+                                            onAction(StudioAction.UpdateSynthEnvelope(targetTrack.trackId, synth.attackSec, synth.decaySec, synth.sustainLevel, maxOf(0.001f, norm * 3f)))
+                                        },
+                                        label = "R: ${(synth.releaseSec * 1000).toInt()}ms"
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun EmptyTrackPlaceholder(
+    onAction: (StudioAction) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = Daw.space.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Daw.space.md)
+    ) {
+        Text(
+            text = "NO ACTIVE TRACK",
+            style = Daw.type.title,
+            color = Daw.colors.inkOnDark
+        )
+        Text(
+            text = "Create an instrument track to tweak synthesizer & effects rack.",
+            style = Daw.type.caption,
+            color = Daw.colors.inkMuted
+        )
+        FloatingCircle(
+            icon = DawIcons.Add,
+            onClick = {
+                onAction(StudioAction.AddInstrumentTrack("SubSynth", TrackInstrumentType.SUB_SYNTH))
+            }
+        )
     }
 }
 

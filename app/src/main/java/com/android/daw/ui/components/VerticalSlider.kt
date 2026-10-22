@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -46,6 +48,9 @@ fun VerticalSlider(
     thumbColor: Color = Daw.colors.n4Control,
     isEnabled: Boolean = true
 ) {
+    val currentValue by rememberUpdatedState(value)
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+
     val colors = Daw.colors
     val space = Daw.space
     val iconMinDp = space.iconMin
@@ -69,11 +74,11 @@ fun VerticalSlider(
                         if (trackHeightPx > 0f) {
                             val travelY = offset.y - thumbRadiusPx
                             val fraction = 1f - (travelY / trackHeightPx).coerceIn(0f, 1f)
-                            onValueChange(fraction)
+                            currentOnValueChange(fraction)
                         }
                     }
                 }
-                .pointerInput(isEnabled, value) {
+                .pointerInput(isEnabled) {
                     if (!isEnabled) return@pointerInput
                     detectDragGestures { change, dragAmount ->
                         change.consume()
@@ -81,8 +86,8 @@ fun VerticalSlider(
                         val trackHeightPx = size.height - 2 * thumbRadiusPx
                         if (trackHeightPx > 0f) {
                             val delta = -dragAmount.y / trackHeightPx
-                            val newVal = (value + delta).coerceIn(0f, 1f)
-                            onValueChange(newVal)
+                            val newVal = (currentValue + delta).coerceIn(0f, 1f)
+                            currentOnValueChange(newVal)
                         }
                     }
                 },

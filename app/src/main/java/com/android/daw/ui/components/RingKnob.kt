@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +72,9 @@ fun RingKnob(
     size: Dp = Daw.space.circleLg,
     isEnabled: Boolean = true
 ) {
+    val currentValue by rememberUpdatedState(value)
+    val currentOnValueChange by rememberUpdatedState(onValueChange)
+
     var isDragging by remember { mutableFloatStateOf(0f) }
     val strokeWidthDp = Daw.space.indicator
     val inkOnDark = Daw.colors.inkOnDark
@@ -89,15 +93,15 @@ fun RingKnob(
             modifier = Modifier
                 .size(size)
                 .graphicsLayer { alpha = if (isEnabled) 1f else 0.38f }
-                .pointerInput(isEnabled, isBipolar) {
+                .pointerInput(isEnabled) {
                     if (!isEnabled) return@pointerInput
                     detectTapGestures(
                         onDoubleTap = {
-                            onValueChange(defaultValue)
+                            currentOnValueChange(defaultValue)
                         }
                     )
                 }
-                .pointerInput(isEnabled, isBipolar, value) {
+                .pointerInput(isEnabled, isBipolar) {
                     if (!isEnabled) return@pointerInput
                     detectDragGestures(
                         onDragStart = { isDragging = 1f },
@@ -109,8 +113,8 @@ fun RingKnob(
                         val delta = -dragAmount.y * dragSensitivity
                         val minVal = if (isBipolar) -1f else 0f
                         val maxVal = 1f
-                        val newVal = (value + delta).coerceIn(minVal, maxVal)
-                        onValueChange(newVal)
+                        val newVal = (currentValue + delta).coerceIn(minVal, maxVal)
+                        currentOnValueChange(newVal)
                     }
                 },
             contentAlignment = Alignment.Center

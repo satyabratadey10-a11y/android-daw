@@ -188,6 +188,20 @@ void AudioEngine::setMasterLimiter(float threshold_db, float ceiling_db, float r
     master_limiter_.setReleaseMs(release_ms);
 }
 
+void AudioEngine::setSynthParams(int track_id, float cutoff_hz, float resonance, float drive) noexcept {
+    auto* track = getTrack(track_id);
+    if (track) {
+        track->setSynthParams(cutoff_hz, resonance, drive);
+    }
+}
+
+void AudioEngine::setSynthAdsr(int track_id, float attack_sec, float decay_sec, float sustain_level, float release_sec) noexcept {
+    auto* track = getTrack(track_id);
+    if (track) {
+        track->setSynthAdsr(attack_sec, decay_sec, sustain_level, release_sec);
+    }
+}
+
 void AudioEngine::getMeteringData(float* out_floats, int num_tracks) noexcept {
     if (!out_floats) return;
 
@@ -314,22 +328,13 @@ bool AudioEngine::renderMixdown(const std::string& output_wav_path, int bit_dept
 void AudioEngine::renderAudio(float* output_interleaved, size_t num_frames) noexcept {
     if (!output_interleaved || num_frames == 0) return;
 
-    if (!is_playing_.load(std::memory_order_relaxed)) {
-        // Output silence when stopped / paused
-        std::fill_n(output_interleaved, num_frames * 2, 0.0f);
-        master_peak_l_.store(master_peak_l_.load(std::memory_order_relaxed) * 0.85f, std::memory_order_relaxed);
-        master_peak_r_.store(master_peak_r_.load(std::memory_order_relaxed) * 0.85f, std::memory_order_relaxed);
-        master_rms_l_.store(master_rms_l_.load(std::memory_order_relaxed) * 0.85f, std::memory_order_relaxed);
-        master_rms_r_.store(master_rms_r_.load(std::memory_order_relaxed) * 0.85f, std::memory_order_relaxed);
-        return;
-    }
-
     if (master_buf_l_.size() < num_frames) {
         master_buf_l_.resize(num_frames, 0.0f);
         master_buf_r_.resize(num_frames, 0.0f);
     }
 
-    const int64_t current_pos = playback_frame_.load(std::memory_order_relaxed);
+    const bool is_playing = is_playing_.load(std::memory_order_relaxed);
+    const int64_t current_pos = is_playing ? playback_frame_.load(std::memory_order_relaxed) : -1;
 
     // 1. Render planar multi-track audio into master planar accumulators
     renderAudioPlanar(master_buf_l_.data(), master_buf_r_.data(), num_frames, current_pos);
@@ -340,16 +345,18 @@ void AudioEngine::renderAudio(float* output_interleaved, size_t num_frames) noex
         output_interleaved[2 * i + 1] = master_buf_r_[i];
     }
 
-    // 3. Advance timeline playhead with loop boundary wrapping
-    int64_t next_pos = current_pos + static_cast<int64_t>(num_frames);
-    if (loop_enabled_.load(std::memory_order_relaxed)) {
-        const int64_t loop_start = loop_start_frame_.load(std::memory_order_relaxed);
-        const int64_t loop_end = loop_end_frame_.load(std::memory_order_relaxed);
-        if (loop_end > loop_start && next_pos >= loop_end) {
-            next_pos = loop_start + ((next_pos - loop_start) % (loop_end - loop_start));
+    // 3. Advance timeline playhead with loop boundary wrapping ONLY when playing
+    if (is_playing) {
+        int64_t next_pos = current_pos + static_cast<int64_t>(num_frames);
+        if (loop_enabled_.load(std::memory_order_relaxed)) {
+            const int64_t loop_start = loop_start_frame_.load(std::memory_order_relaxed);
+            const int64_t loop_end = loop_end_frame_.load(std::memory_order_relaxed);
+            if (loop_end > loop_start && next_pos >= loop_end) {
+                next_pos = loop_start + ((next_pos - loop_start) % (loop_end - loop_start));
+            }
         }
+        playback_frame_.store(next_pos, std::memory_order_relaxed);
     }
-    playback_frame_.store(next_pos, std::memory_order_relaxed);
 }
 
 void AudioEngine::renderAudioPlanar(float* out_left, float* out_right, size_t num_frames, int64_t current_frame) noexcept {

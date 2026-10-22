@@ -574,4 +574,85 @@ class StudioViewModelTest {
         advanceUntilIdle()
         assertFalse(viewModel.uiState.value.followPlayhead)
     }
+
+    @Test
+    fun testSynthParamsAndEnvelopeUpdates() = runTest(testDispatcher) {
+        // Add instrument track
+        viewModel.onAction(
+            StudioAction.AddInstrumentTrack(
+                "SubSynth",
+                com.android.daw.viewmodel.TrackInstrumentType.SUB_SYNTH
+            )
+        )
+        advanceUntilIdle()
+
+        val trackId = viewModel.uiState.value.tracks.first().trackId
+
+        // Update synth filter cutoff, resonance, drive
+        viewModel.onAction(
+            StudioAction.UpdateSynthParams(
+                trackId = trackId,
+                cutoffHz = 5000f,
+                resonance = 4.2f,
+                drive = 1.5f
+            )
+        )
+        advanceUntilIdle()
+
+        val synthParams = viewModel.uiState.value.tracks.first().synthParams
+        assertEquals(5000f, synthParams.cutoffHz, 1e-2f)
+        assertEquals(4.2f, synthParams.resonance, 1e-2f)
+        assertEquals(1.5f, synthParams.drive, 1e-2f)
+
+        // Update ADSR Envelope
+        viewModel.onAction(
+            StudioAction.UpdateSynthEnvelope(
+                trackId = trackId,
+                attackSec = 0.05f,
+                decaySec = 0.45f,
+                sustainLevel = 0.6f,
+                releaseSec = 1.2f
+            )
+        )
+        advanceUntilIdle()
+
+        val envParams = viewModel.uiState.value.tracks.first().synthParams
+        assertEquals(0.05f, envParams.attackSec, 1e-3f)
+        assertEquals(0.45f, envParams.decaySec, 1e-3f)
+        assertEquals(0.6f, envParams.sustainLevel, 1e-3f)
+        assertEquals(1.2f, envParams.releaseSec, 1e-3f)
+
+        // Toggle Synth Options
+        assertFalse(envParams.isMono)
+        viewModel.onAction(StudioAction.ToggleSynthOption(trackId, "MONO"))
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.tracks.first().synthParams.isMono)
+
+        assertFalse(envParams.isLegato)
+        viewModel.onAction(StudioAction.ToggleSynthOption(trackId, "LEGATO"))
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.tracks.first().synthParams.isLegato)
+
+        assertFalse(envParams.isPortamento)
+        viewModel.onAction(StudioAction.ToggleSynthOption(trackId, "PORTA"))
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.tracks.first().synthParams.isPortamento)
+    }
+
+    @Test
+    fun testPianoRollAutoInitializationOnEmptyProject() = runTest(testDispatcher) {
+        assertEquals(0, viewModel.uiState.value.tracks.size)
+
+        // Opening Piano Roll on empty project should auto-create instrument track + default MIDI clip
+        viewModel.onAction(StudioAction.TogglePianoRollPanel)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.isPianoRollOpen)
+        assertEquals(1, viewModel.uiState.value.tracks.size)
+        val track = viewModel.uiState.value.tracks.first()
+        assertEquals(com.android.daw.viewmodel.TrackInstrumentType.SUB_SYNTH, track.instrumentType)
+        assertEquals(1, track.clips.size)
+        assertTrue(track.clips.first().isMidi)
+        assertNotNull(viewModel.uiState.value.pianoRollClipId)
+    }
 }

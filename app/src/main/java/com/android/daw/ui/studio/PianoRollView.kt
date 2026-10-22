@@ -549,6 +549,8 @@ private fun NoteGridCanvas(
     var dragStartNoteStartFrame by remember { mutableLongStateOf(0L) }
     var dragStartNoteDurFrames by remember { mutableLongStateOf(0L) }
     var dragStartPitch by remember { mutableIntStateOf(60) }
+    var accumulatedDragX by remember { mutableFloatStateOf(0f) }
+    var accumulatedDragY by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = modifier
@@ -629,10 +631,11 @@ private fun NoteGridCanvas(
                             val nStartSec = n.startFrame.toFloat() / sampleRate
                             val nDurSec = n.durationFrames.toFloat() / sampleRate
                             val nX = originInsetPx + (nStartSec * zoom) - scrollOffset
-                            val nW = max(8f, nDurSec * zoom)
+                            val nW = max(10f, nDurSec * zoom)
                             val nKeyIdx = maxPitch - n.pitch
                             val nY = nKeyIdx * keyHeight
-                            startOffset.x >= (nX - 4f) && startOffset.x <= (nX + nW + 4f) && startOffset.y >= nY && startOffset.y <= (nY + keyHeight)
+                            startOffset.x >= (nX - 8f) && startOffset.x <= (nX + nW + 24f) &&
+                                startOffset.y >= (nY - 6f) && startOffset.y <= (nY + keyHeight + 6f)
                         }
 
                         if (note != null) {
@@ -640,12 +643,16 @@ private fun NoteGridCanvas(
                             dragStartNoteStartFrame = note.startFrame
                             dragStartNoteDurFrames = note.durationFrames
                             dragStartPitch = note.pitch
+                            accumulatedDragX = 0f
+                            accumulatedDragY = 0f
 
                             val nStartSec = note.startFrame.toFloat() / sampleRate
                             val nDurSec = note.durationFrames.toFloat() / sampleRate
                             val nX = originInsetPx + (nStartSec * zoom) - scrollOffset
-                            val nW = max(8f, nDurSec * zoom)
-                            isResizing = (startOffset.x >= nX + nW - 14f)
+                            val nW = max(10f, nDurSec * zoom)
+
+                            val resizeZonePx = 28.dp.toPx().coerceAtMost(nW * 0.75f).coerceAtLeast(16f)
+                            isResizing = (startOffset.x >= (nX + nW - resizeZonePx))
                         }
                     },
                     onDrag = { change, dragAmount ->
@@ -654,54 +661,74 @@ private fun NoteGridCanvas(
                         val tr = targetTrack ?: return@detectDragGestures
                         if (draggingNoteId == -1) return@detectDragGestures
 
+                        accumulatedDragX += dragAmount.x
+                        accumulatedDragY += dragAmount.y
+
                         val keyHeight = size.height / totalKeys
                         val currentNote = clip.notes.find { it.id == draggingNoteId } ?: return@detectDragGestures
 
                         if (isResizing) {
-                            val deltaSec = dragAmount.x / zoom
-                            val deltaFrames = (deltaSec * sampleRate).toLong()
-                            val newDur = maxOf(256L, currentNote.durationFrames + deltaFrames)
-                            val snappedDur = PianoRollSnapMath.quantizeDuration(newDur, snap, bpm, sampleRate)
-                            onAction(
-                                StudioAction.UpdateMidiNote(
-                                    trackId = tr.trackId,
-                                    clipId = clip.clipId,
-                                    noteId = currentNote.id,
-                                    newPitch = currentNote.pitch,
-                                    newStartFrame = currentNote.startFrame,
-                                    newDurationFrames = snappedDur,
-                                    velocity = currentNote.velocity
+                            val totalDeltaSec = accumulatedDragX / zoom
+                            val totalDeltaFrames = (totalDeltaSec * sampleRate).toLong()
+                            val rawDur = maxOf(256L, dragStartNoteDurFrames + totalDeltaFrames)
+                            val finalDur = if (snap == PianoRollSnap.OFF) {
+                                rawDur
+                            } else {
+                                PianoRollSnapMath.quantizeDuration(rawDur, snap, bpm, sampleRate)
+                            }
+
+                            if (finalDur != currentNote.durationFrames) {
+                                onAction(
+                                    StudioAction.UpdateMidiNote(
+                                        trackId = tr.trackId,
+                                        clipId = clip.clipId,
+                                        noteId = currentNote.id,
+                                        newPitch = currentNote.pitch,
+                                        newStartFrame = currentNote.startFrame,
+                                        newDurationFrames = finalDur,
+                                        velocity = currentNote.velocity
+                                    )
                                 )
-                            )
+                            }
                         } else {
-                            val deltaSec = dragAmount.x / zoom
-                            val deltaFrames = (deltaSec * sampleRate).toLong()
-                            val newStart = maxOf(0L, currentNote.startFrame + deltaFrames)
-                            val snappedStart = PianoRollSnapMath.quantizeFrame(newStart, snap, bpm, sampleRate)
+                            val totalDeltaSec = accumulatedDragX / zoom
+                            val totalDeltaFrames = (totalDeltaSec * sampleRate).toLong()
+                            val rawStart = maxOf(0L, dragStartNoteStartFrame + totalDeltaFrames)
+                            val finalStart = if (snap == PianoRollSnap.OFF) {
+                                rawStart
+                            } else {
+                                PianoRollSnapMath.quantizeFrame(rawStart, snap, bpm, sampleRate)
+                            }
 
-                            val deltaPitch = (-dragAmount.y / keyHeight).toInt()
-                            val newPitch = (currentNote.pitch + deltaPitch).coerceIn(minPitch, maxPitch)
+                            val deltaPitch = (-accumulatedDragY / keyHeight).toInt()
+                            val newPitch = (dragStartPitch + deltaPitch).coerceIn(minPitch, maxPitch)
 
-                            onAction(
-                                StudioAction.UpdateMidiNote(
-                                    trackId = tr.trackId,
-                                    clipId = clip.clipId,
-                                    noteId = currentNote.id,
-                                    newPitch = newPitch,
-                                    newStartFrame = snappedStart,
-                                    newDurationFrames = currentNote.durationFrames,
-                                    velocity = currentNote.velocity
+                            if (finalStart != currentNote.startFrame || newPitch != currentNote.pitch) {
+                                onAction(
+                                    StudioAction.UpdateMidiNote(
+                                        trackId = tr.trackId,
+                                        clipId = clip.clipId,
+                                        noteId = currentNote.id,
+                                        newPitch = newPitch,
+                                        newStartFrame = finalStart,
+                                        newDurationFrames = currentNote.durationFrames,
+                                        velocity = currentNote.velocity
+                                    )
                                 )
-                            )
+                            }
                         }
                     },
                     onDragEnd = {
                         draggingNoteId = -1
                         isResizing = false
+                        accumulatedDragX = 0f
+                        accumulatedDragY = 0f
                     },
                     onDragCancel = {
                         draggingNoteId = -1
                         isResizing = false
+                        accumulatedDragX = 0f
+                        accumulatedDragY = 0f
                     }
                 )
             }
@@ -795,12 +822,42 @@ private fun NoteGridCanvas(
                     )
 
                     // Right edge resize handle indicator
-                    val handleW = min(8.dp.toPx(), nW / 3f)
+                    val handleW = min(6.dp.toPx(), nW / 3f)
                     drawRoundRect(
-                        color = inkOnLight.copy(alpha = 0.4f),
+                        color = inkOnLight.copy(alpha = 0.25f),
                         topLeft = Offset(nX + nW - handleW, nY),
                         size = Size(handleW, nH),
                         cornerRadius = CornerRadius(noteCornerRadius, noteCornerRadius)
+                    )
+
+                    // Tactile duration resize dot placed at the end of the note duration
+                    val isThisNoteResizing = isResizing && draggingNoteId == note.id
+                    val dotRadius = if (isThisNoteResizing) 4.5.dp.toPx() else 3.5.dp.toPx()
+                    val dotCenter = Offset(
+                        x = (nX + nW - 5.dp.toPx()).coerceAtLeast(nX + dotRadius),
+                        y = nY + (nH / 2f)
+                    )
+
+                    if (isThisNoteResizing) {
+                        drawCircle(
+                            color = mintBase.copy(alpha = 0.45f),
+                            radius = dotRadius * 2f,
+                            center = dotCenter
+                        )
+                    }
+
+                    // Outer dot rim / shadow
+                    drawCircle(
+                        color = Daw.colors.n0Workspace.copy(alpha = 0.6f),
+                        radius = dotRadius + 1.dp.toPx(),
+                        center = dotCenter
+                    )
+
+                    // Grab dot handle
+                    drawCircle(
+                        color = if (isThisNoteResizing) mintBase else inkOnLight,
+                        radius = dotRadius,
+                        center = dotCenter
                     )
                 }
             }

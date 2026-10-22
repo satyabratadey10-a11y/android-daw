@@ -247,6 +247,20 @@ data class AudioClipUiModel(
 )
 
 @Immutable
+data class SynthParamsState(
+    val cutoffHz: Float = 3500f,
+    val resonance: Float = 1.5f,
+    val drive: Float = 1.0f,
+    val isMono: Boolean = false,
+    val isLegato: Boolean = false,
+    val isPortamento: Boolean = false,
+    val attackSec: Float = 0.01f,
+    val decaySec: Float = 0.25f,
+    val sustainLevel: Float = 0.7f,
+    val releaseSec: Float = 0.3f
+)
+
+@Immutable
 data class TrackUiModel(
     val trackId: Int,
     val name: String,
@@ -260,7 +274,8 @@ data class TrackUiModel(
     val clips: List<AudioClipUiModel> = emptyList(),
     val levels: StereoLevel = StereoLevel(),
     val eqBands: List<EqBandState> = defaultEqBands(),
-    val delayParams: DelayParamsState = DelayParamsState()
+    val delayParams: DelayParamsState = DelayParamsState(),
+    val synthParams: SynthParamsState = SynthParamsState()
 ) {
     val color: Color get() = Color(colorHex)
 

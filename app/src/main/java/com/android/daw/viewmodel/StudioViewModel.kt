@@ -63,6 +63,17 @@ class StudioViewModel(
     private val undoRedoManager = UndoRedoManager(200)
 
     init {
+        viewModelScope.launch(defaultDispatcher) {
+            val app = try { DawApplication.getInstance() } catch (_: Throwable) { null }
+            val audioManager = app?.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
+            val sampleRateStr = audioManager?.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)
+            val framesPerBurstStr = audioManager?.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)
+
+            val sampleRate = sampleRateStr?.toIntOrNull() ?: 48000
+            val framesPerBurst = framesPerBurstStr?.toIntOrNull() ?: 192
+
+            audioEngine.initialize(sampleRate, framesPerBurst)
+        }
         if (enableTelemetryLoop) {
             startTelemetryLoop()
         }
@@ -137,6 +148,13 @@ class StudioViewModel(
                     action.thresholdDb, action.ceilingDb, action.releaseMs
                 )
                 is StudioAction.ToggleLimiterBypass -> handleToggleLimiterBypass(action.isBypassed)
+                is StudioAction.UpdateSynthParams -> handleUpdateSynthParams(
+                    action.trackId, action.cutoffHz, action.resonance, action.drive
+                )
+                is StudioAction.UpdateSynthEnvelope -> handleUpdateSynthEnvelope(
+                    action.trackId, action.attackSec, action.decaySec, action.sustainLevel, action.releaseSec
+                )
+                is StudioAction.ToggleSynthOption -> handleToggleSynthOption(action.trackId, action.option)
 
                 // --- Recording & Export ---
                 is StudioAction.ToggleRecord -> handleToggleRecord(action.isRecording)
@@ -383,20 +401,119 @@ class StudioViewModel(
         _uiState.update { it.copy(isMixerOpen = !it.isMixerOpen, isMixerViewActive = !it.isMixerOpen) }
     }
 
-    private fun handleToggleInstrumentPanel() {
-        _uiState.update { it.copy(isInstrumentPanelOpen = !it.isInstrumentPanelOpen, isDspInspectorOpen = !it.isInstrumentPanelOpen) }
+    private suspend fun handleToggleInstrumentPanel() = withContext(defaultDispatcher) {
+        val currentState = _uiState.value
+        val willOpen = !currentState.isInstrumentPanelOpen
+        if (willOpen && currentState.tracks.isEmpty()) {
+            val nextId = 1
+            val colorHex = TRACK_PALETTE_HEX[0]
+            val newTrack = TrackUiModel(
+                trackId = nextId,
+                name = "SubSynth 1",
+                instrumentType = TrackInstrumentType.SUB_SYNTH,
+                colorHex = colorHex,
+                clips = emptyList()
+            )
+            withNativeEngine {
+                it.addTrack(nextId)
+                it.setTrackType(nextId, TrackInstrumentType.SUB_SYNTH.id)
+            }
+            _uiState.update { state ->
+                state.copy(
+                    tracks = listOf(newTrack),
+                    selectedTrackId = nextId,
+                    dspTargetTrackId = nextId,
+                    isInstrumentPanelOpen = true,
+                    isDspInspectorOpen = true
+                )
+            }
+        } else {
+            val targetTrackId = currentState.dspTargetTrackId ?: currentState.selectedTrackId ?: currentState.tracks.firstOrNull()?.trackId
+            _uiState.update {
+                it.copy(
+                    isInstrumentPanelOpen = willOpen,
+                    isDspInspectorOpen = willOpen,
+                    dspTargetTrackId = if (willOpen) targetTrackId else it.dspTargetTrackId
+                )
+            }
+        }
     }
 
-    private fun handleTogglePianoRollPanel() {
-        _uiState.update { state ->
-            val newOpen = !state.isPianoRollOpen
-            val targetTrack = state.selectedTrack ?: state.tracks.firstOrNull { it.instrumentType != TrackInstrumentType.AUDIO }
-            val targetClip = targetTrack?.clips?.firstOrNull { it.isMidi } ?: targetTrack?.clips?.firstOrNull()
-            state.copy(
-                isPianoRollOpen = newOpen,
-                selectedTrackId = targetTrack?.trackId ?: state.selectedTrackId,
-                pianoRollClipId = if (newOpen) targetClip?.clipId else null
-            )
+    private suspend fun handleTogglePianoRollPanel() = withContext(defaultDispatcher) {
+        val currentState = _uiState.value
+        val willOpen = !currentState.isPianoRollOpen
+        if (willOpen) {
+            var tracks = currentState.tracks
+            var targetTrack = currentState.selectedTrack ?: tracks.firstOrNull { it.instrumentType != TrackInstrumentType.AUDIO } ?: tracks.firstOrNull()
+
+            if (targetTrack == null) {
+                val nextId = 1
+                val clipId = 1
+                val colorHex = TRACK_PALETTE_HEX[0]
+                val clipDuration = (currentState.sampleRate * 8).toLong()
+                val midiClip = AudioClipUiModel(
+                    clipId = clipId,
+                    trackId = nextId,
+                    name = "MIDI Clip 1",
+                    startFrame = 0L,
+                    durationFrames = clipDuration,
+                    isMidi = true,
+                    notes = emptyList()
+                )
+                val newTrack = TrackUiModel(
+                    trackId = nextId,
+                    name = "SubSynth 1",
+                    instrumentType = TrackInstrumentType.SUB_SYNTH,
+                    colorHex = colorHex,
+                    clips = listOf(midiClip)
+                )
+                withNativeEngine {
+                    it.addTrack(nextId)
+                    it.setTrackType(nextId, TrackInstrumentType.SUB_SYNTH.id)
+                    it.loadMidiClip(nextId, clipId, midiClip.name, 0L, clipDuration)
+                }
+                _uiState.update { state ->
+                    state.copy(
+                        tracks = listOf(newTrack),
+                        selectedTrackId = nextId,
+                        pianoRollClipId = clipId,
+                        isPianoRollOpen = true
+                    )
+                }
+                return@withContext
+            }
+
+            var targetClip = targetTrack.clips.firstOrNull { it.isMidi } ?: targetTrack.clips.firstOrNull()
+            if (targetClip == null) {
+                val clipId = (targetTrack.clips.maxOfOrNull { it.clipId } ?: 0) + 1
+                val clipDuration = (currentState.sampleRate * 8).toLong()
+                val midiClip = AudioClipUiModel(
+                    clipId = clipId,
+                    trackId = targetTrack.trackId,
+                    name = "MIDI Clip $clipId",
+                    startFrame = 0L,
+                    durationFrames = clipDuration,
+                    isMidi = true,
+                    notes = emptyList()
+                )
+                withNativeEngine {
+                    it.loadMidiClip(targetTrack.trackId, clipId, midiClip.name, 0L, clipDuration)
+                }
+                val updatedTrack = targetTrack.copy(clips = targetTrack.clips + midiClip)
+                tracks = tracks.map { if (it.trackId == targetTrack.trackId) updatedTrack else it }
+                targetClip = midiClip
+            }
+
+            _uiState.update { state ->
+                state.copy(
+                    tracks = tracks,
+                    isPianoRollOpen = true,
+                    selectedTrackId = targetTrack.trackId,
+                    pianoRollClipId = targetClip.clipId
+                )
+            }
+        } else {
+            _uiState.update { it.copy(isPianoRollOpen = false, pianoRollClipId = null) }
         }
     }
 
@@ -814,6 +931,90 @@ class StudioViewModel(
     private fun handleToggleLimiterBypass(isBypassed: Boolean) {
         _uiState.update { state ->
             state.copy(masterLimiter = state.masterLimiter.copy(isEnabled = !isBypassed))
+        }
+    }
+
+    private suspend fun handleUpdateSynthParams(
+        trackId: Int,
+        cutoffHz: Float,
+        resonance: Float,
+        drive: Float
+    ) = withContext(defaultDispatcher) {
+        val clampedCutoff = cutoffHz.coerceIn(20f, 20000f)
+        val clampedRes = resonance.coerceIn(0.5f, 10f)
+        val clampedDrive = drive.coerceIn(0f, 2f)
+
+        withNativeEngine {
+            it.setSynthParams(trackId, clampedCutoff, clampedRes, clampedDrive)
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                tracks = state.tracks.map { track ->
+                    if (track.trackId == trackId) {
+                        track.copy(
+                            synthParams = track.synthParams.copy(
+                                cutoffHz = clampedCutoff,
+                                resonance = clampedRes,
+                                drive = clampedDrive
+                            )
+                        )
+                    } else track
+                }
+            )
+        }
+    }
+
+    private suspend fun handleUpdateSynthEnvelope(
+        trackId: Int,
+        attackSec: Float,
+        decaySec: Float,
+        sustainLevel: Float,
+        releaseSec: Float
+    ) = withContext(defaultDispatcher) {
+        val clampedA = attackSec.coerceIn(0.001f, 2.0f)
+        val clampedD = decaySec.coerceIn(0.001f, 2.0f)
+        val clampedS = sustainLevel.coerceIn(0f, 1.0f)
+        val clampedR = releaseSec.coerceIn(0.001f, 3.0f)
+
+        withNativeEngine {
+            it.setSynthEnvelope(trackId, clampedA, clampedD, clampedS, clampedR)
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                tracks = state.tracks.map { track ->
+                    if (track.trackId == trackId) {
+                        track.copy(
+                            synthParams = track.synthParams.copy(
+                                attackSec = clampedA,
+                                decaySec = clampedD,
+                                sustainLevel = clampedS,
+                                releaseSec = clampedR
+                            )
+                        )
+                    } else track
+                }
+            )
+        }
+    }
+
+    private fun handleToggleSynthOption(trackId: Int, option: String) {
+        _uiState.update { state ->
+            state.copy(
+                tracks = state.tracks.map { track ->
+                    if (track.trackId == trackId) {
+                        val current = track.synthParams
+                        val updated = when (option.uppercase()) {
+                            "MONO" -> current.copy(isMono = !current.isMono)
+                            "LEGATO" -> current.copy(isLegato = !current.isLegato)
+                            "PORTA" -> current.copy(isPortamento = !current.isPortamento)
+                            else -> current
+                        }
+                        track.copy(synthParams = updated)
+                    } else track
+                }
+            )
         }
     }
 

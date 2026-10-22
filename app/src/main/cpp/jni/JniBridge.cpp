@@ -170,6 +170,20 @@ static void jni_nativeSetMasterLimiter(JNIEnv* /*env*/, jobject /*thiz*/, jfloat
     }
 }
 
+static void jni_nativeSetSynthParams(JNIEnv* /*env*/, jobject /*thiz*/, jint trackId, jfloat cutoffHz, jfloat resonance, jfloat drive) {
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    if (g_audio_engine) {
+        g_audio_engine->setSynthParams(trackId, cutoffHz, resonance, drive);
+    }
+}
+
+static void jni_nativeSetSynthAdsr(JNIEnv* /*env*/, jobject /*thiz*/, jint trackId, jfloat attack, jfloat decay, jfloat sustain, jfloat release) {
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+    if (g_audio_engine) {
+        g_audio_engine->setSynthAdsr(trackId, attack, decay, sustain, release);
+    }
+}
+
 static jlong jni_nativeGetPlaybackPositionFrames(JNIEnv* /*env*/, jobject /*thiz*/) {
     if (g_audio_engine) {
         return static_cast<jlong>(g_audio_engine->getPlaybackPositionFrames());
@@ -392,6 +406,8 @@ static const JNINativeMethod g_native_methods[] = {
     {"nativeSetTrackEqBand", "(IIFFFF)V", reinterpret_cast<void*>(jni_nativeSetTrackEqBand)},
     {"nativeSetTrackDelay", "(IFFF)V", reinterpret_cast<void*>(jni_nativeSetTrackDelay)},
     {"nativeSetMasterLimiter", "(FFF)V", reinterpret_cast<void*>(jni_nativeSetMasterLimiter)},
+    {"nativeSetSynthParams", "(IFFF)V", reinterpret_cast<void*>(jni_nativeSetSynthParams)},
+    {"nativeSetSynthAdsr", "(IFFFF)V", reinterpret_cast<void*>(jni_nativeSetSynthAdsr)},
     {"nativeGetPlaybackPositionFrames", "()J", reinterpret_cast<void*>(jni_nativeGetPlaybackPositionFrames)},
     {"nativeGetMeteringData", "(Ljava/nio/ByteBuffer;I)V", reinterpret_cast<void*>(jni_nativeGetMeteringData)},
     {"nativeLoadClip", "(IILjava/lang/String;J)Z", reinterpret_cast<void*>(jni_nativeLoadClip)},
@@ -606,6 +622,14 @@ JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeS
 
 JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeRenderMixdown(JNIEnv* env, jobject thiz, jstring outputWavPath, jint bitDepth, jlong totalFrames) {
     return jni_nativeRenderMixdown(env, thiz, outputWavPath, bitDepth, totalFrames);
+}
+
+JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSetSynthParams(JNIEnv* env, jobject thiz, jint trackId, jfloat cutoffHz, jfloat resonance, jfloat drive) {
+    jni_nativeSetSynthParams(env, thiz, trackId, cutoffHz, resonance, drive);
+}
+
+JNIEXPORT void JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeSetSynthAdsr(JNIEnv* env, jobject thiz, jint trackId, jfloat attack, jfloat decay, jfloat sustain, jfloat release) {
+    jni_nativeSetSynthAdsr(env, thiz, trackId, attack, decay, sustain, release);
 }
 
 JNIEXPORT jboolean JNICALL Java_com_android_daw_bridge_NativeAudioEngine_nativeRenderOffline(JNIEnv* env, jobject thiz, jstring outputWavPath, jlong totalFrames) {

@@ -40,18 +40,18 @@ void AudioTrack::setSampleRate(float sample_rate) {
 }
 
 void AudioTrack::noteOn(int note, float velocity) noexcept {
-    if (track_type_ == TrackType::SUB_SYNTH) {
-        sub_synth_.noteOn(note, velocity);
-    } else if (track_type_ == TrackType::DRUM_KIT) {
+    if (track_type_ == TrackType::DRUM_KIT) {
         drum_synth_.noteOn(note, velocity);
+    } else {
+        sub_synth_.noteOn(note, velocity);
     }
 }
 
 void AudioTrack::noteOff(int note) noexcept {
-    if (track_type_ == TrackType::SUB_SYNTH) {
-        sub_synth_.noteOff(note);
-    } else if (track_type_ == TrackType::DRUM_KIT) {
+    if (track_type_ == TrackType::DRUM_KIT) {
         drum_synth_.noteOff(note);
+    } else {
+        sub_synth_.noteOff(note);
     }
 }
 
@@ -116,6 +116,16 @@ void AudioTrack::setDelay(float delay_ms, float feedback, float wet_dry) noexcep
     delay_.setWetDry(wet_dry);
 }
 
+void AudioTrack::setSynthParams(float cutoff_hz, float resonance, float drive) noexcept {
+    sub_synth_.setFilterCutoff(cutoff_hz);
+    sub_synth_.setFilterResonance(resonance);
+    sub_synth_.setMasterGain(drive);
+}
+
+void AudioTrack::setSynthAdsr(float attack_sec, float decay_sec, float sustain_level, float release_sec) noexcept {
+    sub_synth_.setAmpAdsr(attack_sec, decay_sec, sustain_level, release_sec);
+}
+
 void AudioTrack::getMetering(float& peak_l, float& peak_r, float& rms_l, float& rms_r) const noexcept {
     peak_l = peak_l_.load(std::memory_order_relaxed);
     peak_r = peak_r_.load(std::memory_order_relaxed);
@@ -151,8 +161,7 @@ void AudioTrack::renderBlock(int64_t timeline_frame, size_t num_frames,
     std::fill_n(track_buf_r_.data(), num_frames, 0.0f);
 
     // 2. Render Track Source: Instrument Synth OR Audio Clips
-    if (track_type_ == TrackType::SUB_SYNTH || track_type_ == TrackType::DRUM_KIT) {
-        // Schedule MIDI notes across intersecting timeline clips
+    if (timeline_frame >= 0) {
         for (const auto& clip : clips_) {
             if (clip.isMidi() && clip.intersects(timeline_frame, num_frames)) {
                 for (const auto& note : clip.getMidiNotes()) {
@@ -168,21 +177,17 @@ void AudioTrack::renderBlock(int64_t timeline_frame, size_t num_frames,
                         noteOff(note.note);
                     }
                 }
-            }
-        }
-
-        if (track_type_ == TrackType::SUB_SYNTH) {
-            sub_synth_.renderBlock(track_buf_l_.data(), track_buf_r_.data(), num_frames);
-        } else {
-            drum_synth_.renderBlock(track_buf_l_.data(), track_buf_r_.data(), num_frames);
-        }
-    } else {
-        // Sum intersecting audio clips
-        for (const auto& clip : clips_) {
-            if (clip.intersects(timeline_frame, num_frames)) {
+            } else if (!clip.isMidi() && clip.intersects(timeline_frame, num_frames)) {
                 clip.renderBlock(timeline_frame, num_frames, track_buf_l_.data(), track_buf_r_.data());
             }
         }
+    }
+
+    // Render live or sequenced synth/drum audio into track buffers
+    if (track_type_ == TrackType::DRUM_KIT) {
+        drum_synth_.renderBlock(track_buf_l_.data(), track_buf_r_.data(), num_frames);
+    } else {
+        sub_synth_.renderBlock(track_buf_l_.data(), track_buf_r_.data(), num_frames);
     }
 
     // 3. Process Track DSP Effects Chain (EQ -> Delay -> Gain -> Panner)
