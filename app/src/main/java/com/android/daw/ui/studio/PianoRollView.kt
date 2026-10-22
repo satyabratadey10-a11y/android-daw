@@ -536,6 +536,7 @@ private fun NoteGridCanvas(
     val bpm = state.bpm
     val originInsetPx = TimelineLayoutMath.ORIGIN_INSET_DP * 2.5f
 
+    val n0Workspace = Daw.colors.n0Workspace
     val n1Grid = Daw.colors.n1Grid
     val n2Surface = Daw.colors.n2Surface
     val n3Raised = Daw.colors.n3Raised
@@ -848,7 +849,7 @@ private fun NoteGridCanvas(
 
                     // Outer dot rim / shadow
                     drawCircle(
-                        color = Daw.colors.n0Workspace.copy(alpha = 0.6f),
+                        color = n0Workspace.copy(alpha = 0.6f),
                         radius = dotRadius + 1.dp.toPx(),
                         center = dotCenter
                     )
